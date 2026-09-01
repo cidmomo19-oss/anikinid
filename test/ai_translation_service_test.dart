@@ -17,38 +17,38 @@ void main() {
 
     test('Indonesian naturalizer fixes common literal phrases', () {
       expect(
-        AiSubtitleTranslationService._applyIndonesianNaturalizer('I see.'),
+        AiSubtitleTranslationService.applyIndonesianNaturalizer('I see.'),
         contains('Begitu ya'),
       );
       expect(
-        AiSubtitleTranslationService._applyIndonesianNaturalizer('Are you okay?'),
+        AiSubtitleTranslationService.applyIndonesianNaturalizer('Are you okay?'),
         equals('Kamu baik-baik saja?'),
       );
       expect(
-        AiSubtitleTranslationService._applyIndonesianNaturalizer("It can't be helped"),
+        AiSubtitleTranslationService.applyIndonesianNaturalizer("It can't be helped"),
         equals('Mau bagaimana lagi'),
       );
       expect(
-        AiSubtitleTranslationService._applyIndonesianNaturalizer('Don’t worry'),
+        AiSubtitleTranslationService.applyIndonesianNaturalizer('Don’t worry'),
         equals('Jangan khawatir'),
       );
       expect(
-        AiSubtitleTranslationService._applyIndonesianNaturalizer('Wait!'),
+        AiSubtitleTranslationService.applyIndonesianNaturalizer('Wait!'),
         equals('Tunggu!'),
       );
       expect(
-        AiSubtitleTranslationService._applyIndonesianNaturalizer('Look out!'),
+        AiSubtitleTranslationService.applyIndonesianNaturalizer('Look out!'),
         equals('Awas!'),
       );
       expect(
-        AiSubtitleTranslationService._applyIndonesianNaturalizer('I understand'),
+        AiSubtitleTranslationService.applyIndonesianNaturalizer('I understand'),
         equals('Aku mengerti'),
       );
     });
 
     test('Formatting tags are stripped correctly', () {
       final input = r'{\pos(192,200)}<i>Hello World</i>';
-      final stripped = AiSubtitleTranslationService._stripFormatting(input);
+      final stripped = AiSubtitleTranslationService.stripFormatting(input);
       expect(stripped, equals('Hello World'));
     });
 

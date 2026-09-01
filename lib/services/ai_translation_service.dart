@@ -79,7 +79,7 @@ class AiSubtitleTranslationService {
       } catch (_) {
         // Fall back to local rule-based naturalizer on failure/offline
         translatedTexts = batch
-            .map((c) => _applyIndonesianNaturalizer(c.text))
+            .map((c) => applyIndonesianNaturalizer(c.text))
             .toList();
       }
 
@@ -88,10 +88,10 @@ class AiSubtitleTranslationService {
         final origIndex = uncachedIndices[start + i];
         final rawTranslated = i < translatedTexts.length
             ? translatedTexts[i]
-            : _applyIndonesianNaturalizer(cue.text);
+            : applyIndonesianNaturalizer(cue.text);
 
         final naturalized = targetLanguage == 'id'
-            ? _applyIndonesianNaturalizer(rawTranslated)
+            ? applyIndonesianNaturalizer(rawTranslated)
             : rawTranslated;
 
         _translationCache[_getCacheKey(cue.text, targetLanguage)] = naturalized;
@@ -149,7 +149,6 @@ class AiSubtitleTranslationService {
         }
         break;
       case AiTranslationEngine.builtIn:
-      default:
         break;
     }
 
@@ -162,7 +161,7 @@ class AiSubtitleTranslationService {
     List<String> texts, {
     required String targetLanguage,
   }) async {
-    final cleanedTexts = texts.map((t) => _stripFormatting(t)).toList();
+    final cleanedTexts = texts.map((t) => stripFormatting(t)).toList();
     final combined = cleanedTexts.join('\n---LINE---\n');
 
     final uri = Uri.parse(
@@ -199,7 +198,7 @@ class AiSubtitleTranslationService {
           }
         }
       } catch (_) {}
-      results.add(_applyIndonesianNaturalizer(text));
+      results.add(applyIndonesianNaturalizer(text));
     }
     return results;
   }
@@ -323,13 +322,13 @@ class AiSubtitleTranslationService {
           continue;
         }
       }
-      results.add(_applyIndonesianNaturalizer(text));
+      results.add(applyIndonesianNaturalizer(text));
     }
     return results;
   }
 
   /// Strips formatting tags (ASS styles, WebVTT tags, HTML) before translation.
-  static String _stripFormatting(String text) {
+  static String stripFormatting(String text) {
     return text
         .replaceAll(RegExp(r'\{[^}]*\}'), '')
         .replaceAll(RegExp(r'<[^>]+>'), '')
@@ -341,7 +340,7 @@ class AiSubtitleTranslationService {
 
   /// Post-processor for Indonesian Subtitles ("sekelas subtitle indo umum").
   /// Transforms robotic/literal phrases into standard natural Indonesian subtitle phrasing.
-  static String _applyIndonesianNaturalizer(String text) {
+  static String applyIndonesianNaturalizer(String text) {
     if (text.isEmpty) return text;
 
     var s = text;

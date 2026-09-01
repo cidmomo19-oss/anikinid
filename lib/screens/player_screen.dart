@@ -468,12 +468,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
           return;
         }
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Menerjemahkan subtitle ke Bahasa Indonesia...'),
-            duration: Duration(seconds: 2),
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Menerjemahkan subtitle ke Bahasa Indonesia...'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
 
         final translatedCues = await _aiTranslationService.translateCues(
           rawCues,
