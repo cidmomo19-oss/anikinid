@@ -306,7 +306,7 @@ class AiSubtitleTranslationService {
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'q': _stripFormatting(text),
+          'q': stripFormatting(text),
           'source': 'auto',
           'target': targetLanguage,
           'format': 'text',
