@@ -99,7 +99,7 @@ class BackupService {
         aad: utf8.encode(_aad),
       );
       final payload = _asStringMap(jsonDecode(utf8.decode(clearText)));
-      return _restorePayload(payload);
+      return await _restorePayload(payload);
     } on BackupException {
       rethrow;
     } on SecretBoxAuthenticationError {
