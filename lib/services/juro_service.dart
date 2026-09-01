@@ -1,0 +1,381 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+
+import '../core/app_constants.dart';
+import '../models/juro_models.dart';
+import 'anilist_service.dart';
+import 'aniyomi_extension_service.dart';
+import 'source_health_service.dart';
+
+class JuroService {
+  JuroService({
+    http.Client? client,
+    String? baseUrl,
+    AniyomiExtensionService? aniyomiExtensionService,
+    SourceHealthService? sourceHealthService,
+  }) : _client = client ?? http.Client(),
+       _baseUrl = _normalizeBaseUrl(baseUrl ?? AppConstants.juroApiBaseUrl),
+       _aniyomiExtensionService = aniyomiExtensionService,
+       _sourceHealthService = sourceHealthService;
+
+  final http.Client _client;
+  final String? _baseUrl;
+  final AniyomiExtensionService? _aniyomiExtensionService;
+  final SourceHealthService? _sourceHealthService;
+
+  Future<List<SourceProvider>> rankProviders(
+    List<SourceProvider> providers, {
+    String? preferredKey,
+  }) async {
+    final health = _sourceHealthService;
+    return health == null
+        ? providers
+        : health.rank(providers, preferredKey: preferredKey);
+  }
+
+  Future<List<SourceProvider>> getProviders() {
+    return _getProvidersByType(
+      type: '0',
+      extensionProviders: _getAniyomiProviders(),
+    );
+  }
+
+  Future<List<SourceProvider>> getMangaProviders() {
+    return _getProvidersByType(
+      type: '1',
+      extensionProviders: _getAniyomiMangaProviders(),
+    );
+  }
+
+  Future<List<SourceProvider>> _getProvidersByType({
+    required String type,
+    required Future<List<SourceProvider>> extensionProviders,
+  }) async {
+    var juroProviders = const <SourceProvider>[];
+    Object? juroError;
+    StackTrace? juroStackTrace;
+
+    try {
+      final uri = _uri('Providers', queryParameters: {'type': type});
+      final json = await _getList(uri);
+      juroProviders = json
+          .whereType<Map<String, dynamic>>()
+          .map(SourceProvider.fromJson)
+          .toList();
+    } catch (error, stackTrace) {
+      juroError = error;
+      juroStackTrace = stackTrace;
+    }
+
+    final localProviders = await extensionProviders;
+    if (juroError != null && localProviders.isEmpty) {
+      Error.throwWithStackTrace(juroError, juroStackTrace!);
+    }
+    return [...juroProviders, ...localProviders];
+  }
+
+  Future<List<JuroAnimeInfo>> searchAnime(
+    String query, {
+    required String providerKey,
+  }) {
+    return _track(providerKey, () async {
+      if (_isAniyomiProvider(providerKey)) {
+        final page = await _aniyomiExtensionService?.searchAnime(
+          query,
+          providerKey: providerKey,
+        );
+        return page?.items ?? const [];
+      }
+
+      final uri = _uri(
+        '$providerKey/Search',
+        queryParameters: {'query': query},
+      );
+      final json = await _getList(uri);
+      return json
+          .whereType<Map<String, dynamic>>()
+          .map(JuroAnimeInfo.fromJson)
+          .toList();
+    });
+  }
+
+  Future<List<AnimeEpisode>> getEpisodes(
+    String animeId, {
+    required String providerKey,
+  }) {
+    return _track(providerKey, () async {
+      if (_isAniyomiProvider(providerKey)) {
+        return _aniyomiExtensionService?.getEpisodes(
+              animeId,
+              providerKey: providerKey,
+            ) ??
+            const [];
+      }
+
+      final uri = _uri('$providerKey/Episodes/${Uri.encodeComponent(animeId)}');
+      final json = await _getList(uri);
+      return json
+          .whereType<Map<String, dynamic>>()
+          .map(AnimeEpisode.fromJson)
+          .toList();
+    });
+  }
+
+  Future<List<VideoServer>> getVideoServers(
+    String episodeId, {
+    required String providerKey,
+  }) {
+    return _track(providerKey, () async {
+      if (_isAniyomiProvider(providerKey)) {
+        return _aniyomiExtensionService?.getVideoServers(
+              episodeId,
+              providerKey: providerKey,
+            ) ??
+            const [];
+      }
+
+      final uri = _uri(
+        '$providerKey/VideoServers/${Uri.encodeComponent(episodeId)}',
+      );
+      final json = await _getList(uri);
+      return json
+          .whereType<Map<String, dynamic>>()
+          .map(VideoServer.fromJson)
+          .toList();
+    });
+  }
+
+  Future<List<VideoSource>> getVideos(
+    String query, {
+    required String providerKey,
+  }) {
+    return _track(providerKey, () async {
+      if (_isAniyomiProvider(providerKey)) {
+        return _aniyomiExtensionService?.getVideos(
+              query,
+              providerKey: providerKey,
+            ) ??
+            const [];
+      }
+
+      final uri = _uri('$providerKey/Videos', queryParameters: {'q': query});
+      final json = await _getList(uri);
+      return json
+          .whereType<Map<String, dynamic>>()
+          .map(VideoSource.fromJson)
+          .where((source) => source.isPlayable)
+          .toList();
+    });
+  }
+
+  Future<VideoSource?> getPreferredVideo(
+    AnimeEpisode episode, {
+    required String providerKey,
+  }) async {
+    final servers = await getVideoServers(episode.id, providerKey: providerKey);
+    if (servers.isEmpty) {
+      final fallback = await getVideos(episode.id, providerKey: providerKey);
+      return fallback.isEmpty ? null : fallback.first;
+    }
+
+    final server = servers.firstWhere((item) {
+      final name = item.name.toLowerCase();
+      return name.contains('streamsb') ||
+          name.contains('vidstream') ||
+          name == 'mirror';
+    }, orElse: () => servers.first);
+
+    final videos = await getVideos(server.embed.url, providerKey: providerKey);
+    return videos.isEmpty ? null : videos.first;
+  }
+
+  Future<List<MangaResult>> searchManga(
+    String query, {
+    required String providerKey,
+  }) {
+    return _track(providerKey, () async {
+      if (_isAniyomiMangaProvider(providerKey)) {
+        final page = await _aniyomiExtensionService?.searchManga(
+          query,
+          providerKey: providerKey,
+        );
+        return page?.items ?? const [];
+      }
+
+      final uri = _uri('$providerKey/Search', queryParameters: {'q': query});
+      final json = await _getList(uri);
+      return json
+          .whereType<Map<String, dynamic>>()
+          .map(MangaResult.fromJson)
+          .where((item) => item.id.isNotEmpty)
+          .toList();
+    });
+  }
+
+  Future<MangaInfo> getMangaInfo(
+    String mangaId, {
+    required String providerKey,
+  }) {
+    return _track(providerKey, () async {
+      if (_isAniyomiMangaProvider(providerKey)) {
+        final info = await _aniyomiExtensionService?.getMangaInfo(
+          mangaId,
+          providerKey: providerKey,
+        );
+        if (info != null) return info;
+        throw const ApiException('Manga extension returned no details');
+      }
+
+      final uri = _uri('$providerKey/${Uri.encodeComponent(mangaId)}');
+      final json = await _getMap(uri);
+      return MangaInfo.fromJson(json);
+    });
+  }
+
+  Future<List<MangaChapterPage>> getChapterPages(
+    String chapterId, {
+    required String providerKey,
+  }) {
+    return _track(providerKey, () async {
+      if (_isAniyomiMangaProvider(providerKey)) {
+        return _aniyomiExtensionService?.getChapterPages(
+              chapterId,
+              providerKey: providerKey,
+            ) ??
+            const [];
+      }
+
+      final uri = _uri(
+        '$providerKey/ChapterPages/${Uri.encodeComponent(chapterId)}',
+      );
+      final json = await _getList(uri);
+      final pages = json
+          .whereType<Map<String, dynamic>>()
+          .map(MangaChapterPage.fromJson)
+          .where((page) => page.image.isNotEmpty)
+          .toList();
+      pages.sort((a, b) => a.page.compareTo(b.page));
+      return pages;
+    });
+  }
+
+  Future<T> _track<T>(String providerKey, Future<T> Function() action) async {
+    final stopwatch = Stopwatch()..start();
+    try {
+      final result = await action();
+      stopwatch.stop();
+      try {
+        await _sourceHealthService?.recordSuccess(
+          providerKey,
+          stopwatch.elapsed,
+        );
+      } catch (_) {
+        // Health telemetry must never prevent source playback or reading.
+      }
+      return result;
+    } catch (error) {
+      stopwatch.stop();
+      try {
+        await _sourceHealthService?.recordFailure(
+          providerKey,
+          error,
+          stopwatch.elapsed,
+        );
+      } catch (_) {
+        // Preserve the provider's original error.
+      }
+      rethrow;
+    }
+  }
+
+  Uri _uri(String path, {Map<String, String>? queryParameters}) {
+    final baseUrl = _baseUrl;
+    if (baseUrl == null) {
+      throw const ApiException(
+        'Missing JURO_API_BASE_URL. Run Flutter with '
+        '--dart-define=JURO_API_BASE_URL=<url> or '
+        '--dart-define-from-file=env/juro.local.json.',
+      );
+    }
+    return Uri.parse(
+      '$baseUrl/$path',
+    ).replace(queryParameters: queryParameters);
+  }
+
+  static String? _normalizeBaseUrl(String baseUrl) {
+    final trimmed = baseUrl.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+    return trimmed.endsWith('/')
+        ? trimmed.substring(0, trimmed.length - 1)
+        : trimmed;
+  }
+
+  bool _isAniyomiProvider(String providerKey) {
+    return AniyomiExtensionService.isAnimeProviderKey(providerKey);
+  }
+
+  bool _isAniyomiMangaProvider(String providerKey) {
+    return AniyomiExtensionService.isMangaProviderKey(providerKey);
+  }
+
+  Future<List<SourceProvider>> _getAniyomiProviders() async {
+    final service = _aniyomiExtensionService;
+    if (service == null || !service.isPlatformSupported) {
+      return const [];
+    }
+    try {
+      return await service.getAnimeProviders();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<List<SourceProvider>> _getAniyomiMangaProviders() async {
+    final service = _aniyomiExtensionService;
+    if (service == null || !service.isPlatformSupported) {
+      return const [];
+    }
+    try {
+      return await service.getMangaProviders();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<List<Object?>> _getList(Uri uri) async {
+    final response = await _client.get(
+      uri,
+      headers: const {'Accept': 'application/json'},
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException(
+        'Juro returned ${response.statusCode}: ${response.body}',
+      );
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is List) {
+      return decoded;
+    }
+    throw const ApiException('Unexpected Juro response shape');
+  }
+
+  Future<Map<String, dynamic>> _getMap(Uri uri) async {
+    final response = await _client.get(
+      uri,
+      headers: const {'Accept': 'application/json'},
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException(
+        'Juro returned ${response.statusCode}: ${response.body}',
+      );
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    throw const ApiException('Unexpected Juro response shape');
+  }
+}
