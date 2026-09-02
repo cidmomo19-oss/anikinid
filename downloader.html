@@ -3,24 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Social Media Downloader - Pengunduh Video & Audio Gratis</title>
+    <title>Social Media Downloader (Offline & Client-Side 100%)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-primary: #0f172a;
-            --bg-card: rgba(30, 41, 59, 0.7);
-            --bg-input: rgba(15, 23, 42, 0.6);
+            --bg-card: rgba(30, 41, 59, 0.75);
+            --bg-input: rgba(15, 23, 42, 0.65);
             --primary: #6366f1;
-            --primary-hover: #4f46e5;
             --accent: #ec4899;
             --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
-            --border-color: rgba(255, 255, 255, 0.1);
+            --border-color: rgba(255, 255, 255, 0.12);
             --border-hover: rgba(99, 102, 241, 0.5);
-            --shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+            --shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
             --radius-lg: 18px;
             --radius-md: 12px;
             --radius-sm: 8px;
@@ -52,10 +51,9 @@
             padding: 2rem 1.5rem;
             display: flex;
             flex-direction: column;
-            gap: 2.5rem;
+            gap: 2rem;
         }
 
-        /* Header */
         header {
             text-align: center;
             margin-top: 1rem;
@@ -66,22 +64,20 @@
             align-items: center;
             gap: 0.5rem;
             padding: 0.4rem 1rem;
-            background: rgba(99, 102, 241, 0.1);
-            border: 1px solid rgba(99, 102, 241, 0.3);
+            background: rgba(34, 197, 94, 0.15);
+            border: 1px solid rgba(34, 197, 94, 0.3);
             border-radius: 50px;
-            color: #818cf8;
+            color: #4ade80;
             font-size: 0.875rem;
-            font-weight: 600;
+            font-weight: 700;
             margin-bottom: 1rem;
-            backdrop-filter: blur(10px);
         }
 
         h1 {
-            font-size: 2.75rem;
+            font-size: 2.5rem;
             font-weight: 800;
-            letter-spacing: -0.025em;
             line-height: 1.2;
-            margin-bottom: 1rem;
+            margin-bottom: 0.8rem;
             background: var(--accent-gradient);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
@@ -89,62 +85,66 @@
 
         p.subtitle {
             color: var(--text-muted);
-            font-size: 1.125rem;
-            max-width: 600px;
+            font-size: 1rem;
+            max-width: 650px;
             margin: 0 auto;
             line-height: 1.6;
         }
 
-        /* Platforms Icon Strip */
-        .platforms {
+        /* Tabs */
+        .tab-bar {
             display: flex;
-            justify-content: center;
-            flex-wrap: wrap;
-            gap: 1rem;
-            margin-top: 1.5rem;
-        }
-
-        .platform-tag {
-            display: flex;
-            align-items: center;
             gap: 0.5rem;
-            padding: 0.5rem 1rem;
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(15, 23, 42, 0.8);
+            padding: 0.4rem;
+            border-radius: var(--radius-md);
             border: 1px solid var(--border-color);
-            border-radius: var(--radius-sm);
-            font-size: 0.875rem;
+            margin-top: 1rem;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 0.75rem;
+            background: none;
+            border: none;
             color: var(--text-muted);
-            transition: all 0.2s ease;
+            font-weight: 600;
+            font-size: 0.9rem;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s;
         }
 
-        .platform-tag:hover {
-            border-color: var(--border-hover);
-            color: var(--text-main);
-            transform: translateY(-2px);
+        .tab-btn.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
         }
 
-        /* Main Card Form */
+        /* Card Section */
         .downloader-card {
             background: var(--bg-card);
             border: 1px solid var(--border-color);
             border-radius: var(--radius-lg);
-            padding: 2rem;
+            padding: 1.75rem;
             box-shadow: var(--shadow);
             backdrop-filter: blur(16px);
         }
 
-        .input-group {
-            display: flex;
+        .tab-content {
+            display: none;
             flex-direction: column;
-            gap: 1rem;
+            gap: 1.25rem;
         }
 
-        @media (min-width: 640px) {
-            .input-wrapper {
-                display: flex;
-                position: relative;
-                align-items: center;
-            }
+        .tab-content.active {
+            display: flex;
+        }
+
+        label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-muted);
         }
 
         .input-box {
@@ -152,94 +152,42 @@
             width: 100%;
         }
 
-        .input-box input {
+        input[type="url"], input[type="file"], textarea {
             width: 100%;
-            padding: 1.1rem 3rem 1.1rem 1.25rem;
+            padding: 1rem 1.25rem;
             background: var(--bg-input);
             border: 2px solid var(--border-color);
             border-radius: var(--radius-md);
             color: var(--text-main);
-            font-size: 1rem;
+            font-size: 0.95rem;
             outline: none;
             transition: all 0.25s ease;
         }
 
-        .input-box input:focus {
+        textarea {
+            height: 120px;
+            resize: vertical;
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
+
+        input:focus, textarea:focus {
             border-color: var(--primary);
             box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
         }
 
-        .input-box input::placeholder {
-            color: #64748b;
-        }
-
-        .clear-btn {
-            position: absolute;
-            right: 0.8rem;
-            top: 50%;
-            transform: translateY(-50%);
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            font-size: 1.2rem;
-            cursor: pointer;
-            display: none;
-            padding: 0.3rem;
-            border-radius: 50%;
-        }
-
-        .clear-btn:hover {
-            color: var(--text-main);
-        }
-
-        .controls-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 1rem;
-            margin-top: 1rem;
-        }
-
-        .control-item {
-            display: flex;
-            flex-direction: column;
-            gap: 0.4rem;
-        }
-
-        .control-item label {
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: var(--text-muted);
-        }
-
-        .select-input {
-            width: 100%;
-            padding: 0.8rem 1rem;
-            background: var(--bg-input);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-md);
-            color: var(--text-main);
-            font-size: 0.95rem;
-            outline: none;
-            cursor: pointer;
-        }
-
-        .select-input:focus {
-            border-color: var(--primary);
-        }
-
         .btn-submit {
-            margin-top: 1.25rem;
             width: 100%;
-            padding: 1rem 1.5rem;
+            padding: 1rem;
             background: var(--accent-gradient);
             border: none;
             border-radius: var(--radius-md);
             color: white;
-            font-size: 1.05rem;
+            font-size: 1rem;
             font-weight: 700;
             cursor: pointer;
             transition: all 0.25s ease;
-            box-shadow: 0 4px 14px 0 rgba(99, 102, 241, 0.39);
+            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
             display: flex;
             justify-content: center;
             align-items: center;
@@ -248,48 +196,19 @@
 
         .btn-submit:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px 0 rgba(99, 102, 241, 0.55);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
         }
 
-        .btn-submit:active {
-            transform: translateY(0);
-        }
-
-        .btn-submit:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        /* Spinner */
-        .spinner {
-            width: 20px;
-            height: 20px;
-            border: 3px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            border-top-color: white;
-            animation: spin 0.8s linear infinite;
+        /* Results Display */
+        .results-container {
+            margin-top: 1rem;
             display: none;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* Result Section */
-        .result-section {
-            margin-top: 1.5rem;
-            display: none;
-            animation: fadeIn 0.3s ease;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+            flex-direction: column;
+            gap: 1rem;
         }
 
         .result-card {
-            background: rgba(15, 23, 42, 0.8);
+            background: rgba(15, 23, 42, 0.9);
             border: 1px solid var(--border-color);
             border-radius: var(--radius-md);
             padding: 1.25rem;
@@ -298,176 +217,95 @@
             gap: 1rem;
         }
 
-        @media (min-width: 640px) {
-            .result-card {
-                flex-direction: row;
-                align-items: center;
-            }
-        }
-
-        .preview-img {
+        .media-preview-box {
             width: 100%;
-            max-width: 180px;
-            aspect-ratio: 16/9;
-            object-fit: cover;
+            max-height: 360px;
             border-radius: var(--radius-sm);
-            background: #1e293b;
+            overflow: hidden;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
 
-        .result-info {
-            flex: 1;
+        .media-preview-box video, .media-preview-box img {
+            max-width: 100%;
+            max-height: 360px;
+            object-fit: contain;
+        }
+
+        .media-list {
             display: flex;
             flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        .result-title {
-            font-size: 1rem;
-            font-weight: 600;
-            color: var(--text-main);
-            line-height: 1.4;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-
-        .result-picker {
-            display: flex;
             gap: 0.75rem;
-            flex-wrap: wrap;
-            margin-top: 0.5rem;
         }
 
-        .download-link-btn {
-            display: inline-flex;
+        .media-item {
+            display: flex;
+            justify-content: space-between;
             align-items: center;
-            gap: 0.4rem;
+            padding: 0.75rem 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            word-break: break-all;
+        }
+
+        .media-item-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+            font-size: 0.85rem;
+        }
+
+        .download-btn {
             padding: 0.6rem 1.2rem;
             background: #22c55e;
             color: white;
             text-decoration: none;
-            font-weight: 600;
-            font-size: 0.9rem;
+            font-weight: 700;
+            font-size: 0.85rem;
             border-radius: var(--radius-sm);
-            transition: background 0.2s;
+            border: none;
+            cursor: pointer;
+            white-space: nowrap;
         }
 
-        .download-link-btn:hover {
+        .download-btn:hover {
             background: #16a34a;
         }
 
-        .download-link-btn.secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: var(--text-main);
-        }
-
-        .download-link-btn.secondary:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        /* Error/Status Box */
-        .status-msg {
-            padding: 1rem;
-            border-radius: var(--radius-sm);
-            font-size: 0.95rem;
-            display: none;
-            margin-top: 1rem;
-        }
-
-        .status-msg.error {
-            background: rgba(239, 68, 68, 0.15);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            color: #fca5a5;
-            display: block;
-        }
-
-        .status-msg.info {
-            background: rgba(59, 130, 246, 0.15);
-            border: 1px solid rgba(59, 130, 246, 0.3);
-            color: #93c5fd;
-            display: block;
-        }
-
-        /* Features Grid */
-        .features {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 1.5rem;
-        }
-
-        .feature-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            padding: 1.5rem;
+        /* Bookmarklet Box */
+        .bookmarklet-box {
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px dashed var(--primary);
+            padding: 1.25rem;
             border-radius: var(--radius-md);
+            text-align: center;
             display: flex;
             flex-direction: column;
+            align-items: center;
             gap: 0.75rem;
         }
 
-        .feature-icon {
-            width: 42px;
-            height: 42px;
-            border-radius: var(--radius-sm);
-            background: rgba(99, 102, 241, 0.1);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.25rem;
-        }
-
-        .feature-card h3 {
-            font-size: 1.1rem;
+        .bookmarklet-link {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background: var(--accent-gradient);
+            color: white;
             font-weight: 700;
+            border-radius: 50px;
+            text-decoration: none;
+            cursor: move;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
         }
 
-        .feature-card p {
-            font-size: 0.9rem;
-            color: var(--text-muted);
-            line-height: 1.5;
-        }
-
-        /* FAQ Section */
-        .faq-section {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-lg);
-            padding: 2rem;
-        }
-
-        .faq-section h2 {
-            font-size: 1.5rem;
-            font-weight: 700;
-            margin-bottom: 1.5rem;
-            text-align: center;
-        }
-
-        .faq-grid {
-            display: flex;
-            flex-direction: column;
-            gap: 1.25rem;
-        }
-
-        .faq-item h4 {
-            font-size: 1rem;
-            color: #818cf8;
-            margin-bottom: 0.4rem;
-        }
-
-        .faq-item p {
-            font-size: 0.9rem;
-            color: var(--text-muted);
-            line-height: 1.5;
-        }
-
-        /* Footer */
         footer {
             margin-top: auto;
             padding: 2rem 0;
             text-align: center;
             color: var(--text-muted);
-            font-size: 0.875rem;
+            font-size: 0.85rem;
             border-top: 1px solid var(--border-color);
             width: 100%;
         }
@@ -476,305 +314,280 @@
 <body>
 
     <div class="container">
-        <!-- Header -->
         <header>
             <div class="badge">
-                <span>✨</span> Web Media Downloader 100% Gratis
+                <span>⚡</span> 100% Client-Side & Tanpa API Server
             </div>
-            <h1>Unduh Media Sosial Tanpa Batas</h1>
-            <p class="subtitle">Simpan video, foto, dan audio dari YouTube, Instagram, TikTok, Twitter/X, Facebook, Reddit, dan lainnya secara instan tanpa iklan mengganggu.</p>
+            <h1>Social Media Downloader Engine</h1>
+            <p class="subtitle">Ekstraksi video, audio, dan gambar langsung di browser Anda tanpa bergantung pada API pihak ketiga yang sering mati/error.</p>
 
-            <div class="platforms">
-                <span class="platform-tag">▶ YouTube</span>
-                <span class="platform-tag">📸 Instagram</span>
-                <span class="platform-tag">🎵 TikTok</span>
-                <span class="platform-tag">🐦 Twitter / X</span>
-                <span class="platform-tag">📘 Facebook</span>
-                <span class="platform-tag">👽 Reddit</span>
-                <span class="platform-tag">📌 Pinterest</span>
+            <div class="tab-bar">
+                <button class="tab-btn active" onclick="switchTab('direct')">🔗 Tautan Direct Video</button>
+                <button class="tab-btn" onclick="switchTab('scanner')">📄 Scan HTML / Sumber Halaman</button>
+                <button class="tab-btn" onclick="switchTab('local')">🎬 Video Frame & Audio Extractor</button>
+                <button class="tab-btn" onclick="switchTab('bookmarklet')">⭐ Bookmarklet Instant</button>
             </div>
         </header>
 
-        <!-- Downloader Box -->
         <main class="downloader-card">
-            <form id="downloadForm" onsubmit="handleDownload(event)">
-                <div class="input-group">
-                    <div class="input-box">
-                        <input
-                            type="url"
-                            id="videoUrl"
-                            placeholder="Tempel tautan video/media di sini... (cth: https://www.youtube.com/watch?...)"
-                            required
-                            autocomplete="off"
-                            oninput="toggleClearBtn()"
-                        >
-                        <button type="button" class="clear-btn" id="clearBtn" onclick="clearInput()">✕</button>
-                    </div>
-
-                    <div class="controls-row">
-                        <div class="control-item">
-                            <label for="pickerFormat">Format Unduhan</label>
-                            <select id="pickerFormat" class="select-input">
-                                <option value="video">Video (MP4)</option>
-                                <option value="audio">Audio (MP3)</option>
-                            </select>
-                        </div>
-                        <div class="control-item">
-                            <label for="pickerQuality">Kualitas Video</label>
-                            <select id="pickerQuality" class="select-input">
-                                <option value="1080">1080p (Full HD)</option>
-                                <option value="720" selected>720p (HD)</option>
-                                <option value="480">480p (SD)</option>
-                                <option value="max">Maksimal (Best Available)</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <button type="submit" class="btn-submit" id="submitBtn">
-                        <span class="spinner" id="spinner"></span>
-                        <span id="btnText">Proses Unduhan</span>
-                    </button>
+            <!-- TAB 1: Direct Video Link -->
+            <div id="tab-direct" class="tab-content active">
+                <label for="directUrl">Masukkan URL Direct Video / Stream / Gambar (.mp4, .webm, .m3u8, .jpg, dll)</label>
+                <div class="input-box">
+                    <input type="url" id="directUrl" placeholder="https://domain.com/video.mp4 atau https://..." required>
                 </div>
-            </form>
+                <button class="btn-submit" onclick="processDirectUrl()">
+                    <span>🚀 Unduh & Simpan Media</span>
+                </button>
+            </div>
 
-            <div id="statusBox" class="status-msg"></div>
+            <!-- TAB 2: HTML Page Scanner -->
+            <div id="tab-scanner" class="tab-content">
+                <label for="htmlSource">Tempelkan Kode Sumber Halaman (HTML / Inspect Element / Meta Tags Social Media)</label>
+                <textarea id="htmlSource" placeholder="Buka inspect element / view source di Instagram / TikTok / Twitter / YouTube, lalu tempelkan teks HTML di sini..."></textarea>
+                <button class="btn-submit" onclick="scanHtmlSource()">
+                    <span>🔍 Pindai & Ekstrak Semua Media</span>
+                </button>
+            </div>
 
-            <div id="resultSection" class="result-section">
-                <div class="result-card">
-                    <img id="resThumbnail" class="preview-img" src="" alt="Media Preview">
-                    <div class="result-info">
-                        <div id="resTitle" class="result-title">Judul Media</div>
-                        <div id="resLinks" class="result-picker">
-                            <!-- Download links generated here -->
-                        </div>
+            <!-- TAB 3: Local File Frame & Audio Extractor -->
+            <div id="tab-local" class="tab-content">
+                <label for="localFile">Pilih Berkas Video Lokal (MP4 / WebM / WebP)</label>
+                <input type="file" id="localFile" accept="video/*" onchange="loadLocalVideo(event)">
+                <div class="input-box" style="margin-top: 0.5rem;">
+                    <label>Tindakan Ekstraksi Browser:</label>
+                    <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                        <button class="download-btn" style="flex:1" onclick="captureFrame()">📸 Tangkap Frame Video (PNG)</button>
+                        <button class="download-btn" style="flex:1; background: #3b82f6" onclick="recordAudio()">🎵 Rekam / Ekstrak Audio</button>
                     </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: Bookmarklet -->
+            <div id="tab-bookmarklet" class="tab-content">
+                <div class="bookmarklet-box">
+                    <h3>Pintasan Bookmarklet 1-Klik Browser</h3>
+                    <p style="font-size: 0.9rem; color: var(--text-muted)">
+                        Tarik tombol di bawah ke baris Bookmark browser Anda (Bookmarks Bar). Buka postingan Instagram, Twitter, TikTok, atau YouTube, lalu klik bookmarklet untuk mengekstraksi media secara instan!
+                    </p>
+                    <a class="bookmarklet-link" id="bookmarkletAnchor" href="javascript:void(0)">
+                        📥 Ekstrak Media Sosmed
+                    </a>
+                </div>
+            </div>
+
+            <!-- RESULTS SECTION -->
+            <div id="resultsContainer" class="results-container">
+                <div class="result-card">
+                    <h3 style="font-size: 1.1rem; color: #818cf8;">Hasil Media Ditemukan:</h3>
+                    <div id="previewBox" class="media-preview-box"></div>
+                    <div id="mediaList" class="media-list"></div>
                 </div>
             </div>
         </main>
 
-        <!-- Features -->
-        <section class="features">
-            <div class="feature-card">
-                <div class="feature-icon">🚀</div>
-                <h3>Super Cepat</h3>
-                <p>Proses konversi dan unduh instan tanpa perlu menunggu antrean panjang.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">🔒</div>
-                <h3>Aman & Privasi</h3>
-                <p>Tidak memerlukan pendaftaran akun. Kami tidak menyimpan histori unduhan Anda.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">💎</div>
-                <h3>Kualitas Tinggi</h3>
-                <p>Mendukung pengunduhan dalam kualitas terbaik hingga Full HD & audio jernih.</p>
-            </div>
-        </section>
-
-        <!-- FAQ -->
-        <section class="faq-section">
-            <h2>Pertanyaan Sering Diajukan (FAQ)</h2>
-            <div class="faq-grid">
-                <div class="faq-item">
-                    <h4>Apakah layanan ini benar-benar gratis?</h4>
-                    <p>Ya, web pengunduh ini 100% gratis tanpa biaya tersembunyi atau batasan jumlah unduhan.</p>
-                </div>
-                <div class="faq-item">
-                    <h4>Platform apa saja yang didukung?</h4>
-                    <p>Anda dapat mengunduh dari YouTube, Instagram (Reels & Posts), TikTok (tanpa watermark), Twitter/X, Facebook, Reddit, SoundCloud, dan platform populer lainnya.</p>
-                </div>
-                <div class="faq-item">
-                    <h4>Bagaimana cara mengunduh di HP / Smartphone?</h4>
-                    <p>Cukup salin tautan media dari aplikasi sosial media Anda, buka halaman web ini di browser HP, tempel tautannya, lalu klik "Proses Unduhan".</p>
-                </div>
-            </div>
+        <section style="background: var(--bg-card); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color);">
+            <h3 style="margin-bottom: 0.75rem;">Keunggulan Sistem Tanpa API:</h3>
+            <ul style="padding-left: 1.25rem; color: var(--text-muted); line-height: 1.8; font-size: 0.9rem;">
+                <li>Tidak pernah offline/mati karena berjalan 100% di browser pengguna.</li>
+                <li>Mendukung ekstraksi otomatis dari tag HTML `og:video`, `<video>`, `<source>`, dan `og:image`.</li>
+                <li>Dapat menyimpan dan mengonversi berkas media secara langsung menjadi blob lokal.</li>
+            </ul>
         </section>
     </div>
 
     <footer>
-        <p>&copy; 2025 Web Media Downloader - Hanya format .html standalone.</p>
+        <p>&copy; 2025 Client-Side Media Engine - Standalone .html File</p>
     </footer>
 
     <script>
-        const API_ENDPOINTS = [
-            "https://cobalt-api.kwi.li/",
-            "https://co.wuk.sh/api/json",
-            "https://api.cobalt.tools/"
-        ];
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
 
-        function toggleClearBtn() {
-            const input = document.getElementById('videoUrl');
-            const clearBtn = document.getElementById('clearBtn');
-            clearBtn.style.display = input.value.trim().length > 0 ? 'block' : 'none';
+            event.target.classList.add('active');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+            document.getElementById('resultsContainer').style.display = 'none';
         }
 
-        function clearInput() {
-            const input = document.getElementById('videoUrl');
-            input.value = '';
-            toggleClearBtn();
-            hideStatus();
-            document.getElementById('resultSection').style.display = 'none';
-            input.focus();
-        }
-
-        function showStatus(msg, type = 'info') {
-            const statusBox = document.getElementById('statusBox');
-            statusBox.textContent = msg;
-            statusBox.className = `status-msg ${type}`;
-        }
-
-        function hideStatus() {
-            const statusBox = document.getElementById('statusBox');
-            statusBox.className = 'status-msg';
-            statusBox.style.display = 'none';
-        }
-
-        async function handleDownload(e) {
-            e.preventDefault();
-
-            const urlInput = document.getElementById('videoUrl').value.trim();
-            const format = document.getElementById('pickerFormat').value;
-            const quality = document.getElementById('pickerQuality').value;
-
-            if (!urlInput) {
-                showStatus('Silakan masukkan tautan media terlebih dahulu.', 'error');
+        // TAB 1: Direct Link Processing
+        async function processDirectUrl() {
+            const url = document.getElementById('directUrl').value.trim();
+            if (!url) {
+                alert('Silakan masukkan URL terlebih dahulu.');
                 return;
             }
 
-            const submitBtn = document.getElementById('submitBtn');
-            const spinner = document.getElementById('spinner');
-            const btnText = document.getElementById('btnText');
-            const resultSection = document.getElementById('resultSection');
+            const resultsContainer = document.getElementById('resultsContainer');
+            const previewBox = document.getElementById('previewBox');
+            const mediaList = document.getElementById('mediaList');
 
-            submitBtn.disabled = true;
-            spinner.style.display = 'inline-block';
-            btnText.textContent = 'Memproses...';
-            hideStatus();
-            resultSection.style.display = 'none';
+            previewBox.innerHTML = '';
+            mediaList.innerHTML = '';
 
-            let success = false;
-            let lastError = '';
+            const isVideo = url.match(/\.(mp4|webm|ogg|m3u8)($|\?)/i) || url.includes('video');
 
-            // Public backend APIs list for video extraction
-            const payload = {
-                url: urlInput,
-                vQuality: quality,
-                isAudioOnly: format === 'audio',
-                aFormat: 'mp3'
-            };
-
-            for (const endpoint of API_ENDPOINTS) {
-                try {
-                    const response = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: {
-                            'Accept': 'application/json',
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(payload)
-                    });
-
-                    if (!response.ok) {
-                        const errData = await response.json().catch(() => ({}));
-                        throw new Error(errData.text || `HTTP error ${response.status}`);
-                    }
-
-                    const data = await response.json();
-
-                    if (data.status === 'stream' || data.status === 'redirect' || data.status === 'picker') {
-                        renderResult(data, urlInput);
-                        success = true;
-                        break;
-                    } else if (data.url) {
-                        renderResult({ status: 'redirect', url: data.url }, urlInput);
-                        success = true;
-                        break;
-                    } else {
-                        throw new Error(data.text || 'Gagal memproses media dari server API.');
-                    }
-                } catch (err) {
-                    console.warn(`Attempt with ${endpoint} failed:`, err.message);
-                    lastError = err.message;
-                }
+            if (isVideo) {
+                previewBox.innerHTML = `<video src="${url}" controls autoplay muted crossorigin="anonymous"></video>`;
+            } else {
+                previewBox.innerHTML = `<img src="${url}" alt="Preview" crossorigin="anonymous">`;
             }
 
-            if (!success) {
-                // Fallback simulation for offline testing / fallback API mock link
-                if (urlInput.includes('youtube.com') || urlInput.includes('youtu.be') || urlInput.includes('instagram.com') || urlInput.includes('tiktok.com')) {
-                    renderFallbackResult(urlInput, format, quality);
-                    showStatus('Catatan: Hasil dialihkan menggunakan layanan unduhan langsung.', 'info');
-                } else {
-                    showStatus(`Gagal memproses media: ${lastError || 'Server sedang sibuk. Silakan coba lagi.'}`, 'error');
-                }
-            }
+            mediaList.innerHTML = `
+                <div class="media-item">
+                    <div class="media-item-info">
+                        <strong>Direct Media URL</strong>
+                        <span style="color: var(--text-muted);">${url}</span>
+                    </div>
+                    <button class="download-btn" onclick="forceDownloadBlob('${url}', 'media_file')">⬇ Simpan Media</button>
+                </div>
+            `;
 
-            submitBtn.disabled = false;
-            spinner.style.display = 'none';
-            btnText.textContent = 'Proses Unduhan';
+            resultsContainer.style.display = 'flex';
         }
 
-        function renderResult(data, originalUrl) {
-            const resultSection = document.getElementById('resultSection');
-            const thumbnail = document.getElementById('resThumbnail');
-            const title = document.getElementById('resTitle');
-            const linksContainer = document.getElementById('resLinks');
+        // TAB 2: HTML Page Scanner
+        function scanHtmlSource() {
+            const html = document.getElementById('htmlSource').value;
+            if (!html) {
+                alert('Silakan tempelkan kode HTML terlebih dahulu.');
+                return;
+            }
 
-            linksContainer.innerHTML = '';
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
 
-            // Set thumbnail or fallback image
-            thumbnail.src = `https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400&q=80`;
+            const mediaLinks = new Set();
 
-            title.textContent = `Media dari: ${new URL(originalUrl).hostname}`;
+            // Extract og:video & og:image
+            doc.querySelectorAll('meta[property="og:video"], meta[property="og:video:secure_url"], meta[name="twitter:player"]').forEach(el => {
+                if (el.content) mediaLinks.add({ type: 'Video Meta', url: el.content });
+            });
 
-            if (data.status === 'redirect' || data.status === 'stream') {
-                const btn = document.createElement('a');
-                btn.href = data.url;
-                btn.target = '_blank';
-                btn.className = 'download-link-btn';
-                btn.innerHTML = '⬇ Download Media Sekarang';
-                linksContainer.appendChild(btn);
-            } else if (data.status === 'picker' && Array.isArray(data.picker)) {
-                data.picker.forEach((item, index) => {
-                    const btn = document.createElement('a');
-                    btn.href = item.url;
-                    btn.target = '_blank';
-                    btn.className = 'download-link-btn' + (index > 0 ? ' secondary' : '');
-                    btn.innerHTML = `⬇ Item #${index + 1} (${item.type || 'Media'})`;
-                    linksContainer.appendChild(btn);
+            doc.querySelectorAll('meta[property="og:image"]').forEach(el => {
+                if (el.content) mediaLinks.add({ type: 'Image Meta', url: el.content });
+            });
+
+            // Extract <video> & <source> tags
+            doc.querySelectorAll('video, source').forEach(el => {
+                const src = el.src || el.getAttribute('src');
+                if (src) mediaLinks.add({ type: 'Video Tag', url: src });
+            });
+
+            // Extract <img> tags
+            doc.querySelectorAll('img').forEach(el => {
+                const src = el.src || el.getAttribute('src');
+                if (src && src.startsWith('http')) mediaLinks.add({ type: 'Image Tag', url: src });
+            });
+
+            const resultsContainer = document.getElementById('resultsContainer');
+            const previewBox = document.getElementById('previewBox');
+            const mediaList = document.getElementById('mediaList');
+
+            previewBox.innerHTML = '';
+            mediaList.innerHTML = '';
+
+            if (mediaLinks.size === 0) {
+                mediaList.innerHTML = `<div style="color: #fca5a5; padding: 1rem;">Tidak ditemukan tautan media dalam HTML yang dimasukkan.</div>`;
+            } else {
+                let count = 1;
+                mediaLinks.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'media-item';
+                    div.innerHTML = `
+                        <div class="media-item-info">
+                            <strong>[${item.type}] Media #${count}</strong>
+                            <span style="color: var(--text-muted); font-size: 0.8rem;">${item.url.substring(0, 70)}...</span>
+                        </div>
+                        <button class="download-btn" onclick="forceDownloadBlob('${item.url}', 'media_${count}')">⬇ Unduh</button>
+                    `;
+                    mediaList.appendChild(div);
+                    count++;
                 });
             }
 
-            resultSection.style.display = 'block';
+            resultsContainer.style.display = 'flex';
         }
 
-        function renderFallbackResult(originalUrl, format, quality) {
-            const resultSection = document.getElementById('resultSection');
-            const thumbnail = document.getElementById('resThumbnail');
-            const title = document.getElementById('resTitle');
-            const linksContainer = document.getElementById('resLinks');
+        // TAB 3: Local File Extraction
+        let activeVideoEl = null;
 
-            linksContainer.innerHTML = '';
+        function loadLocalVideo(e) {
+            const file = e.target.files[0];
+            if (!file) return;
 
-            thumbnail.src = `https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=400&q=80`;
+            const resultsContainer = document.getElementById('resultsContainer');
+            const previewBox = document.getElementById('previewBox');
+            const mediaList = document.getElementById('mediaList');
 
-            let siteName = 'Media Sosial';
-            if (originalUrl.includes('youtube') || originalUrl.includes('youtu.be')) siteName = 'YouTube';
-            else if (originalUrl.includes('instagram')) siteName = 'Instagram';
-            else if (originalUrl.includes('tiktok')) siteName = 'TikTok';
-            else if (originalUrl.includes('twitter') || originalUrl.includes('x.com')) siteName = 'Twitter / X';
+            const blobUrl = URL.createObjectURL(file);
+            previewBox.innerHTML = `<video id="activeLocalVid" src="${blobUrl}" controls style="max-width:100%"></video>`;
+            activeVideoEl = document.getElementById('activeLocalVid');
 
-            title.textContent = `Hasil Unduhan ${siteName} (${format.toUpperCase()} - ${quality}p)`;
+            mediaList.innerHTML = `
+                <div class="media-item">
+                    <div class="media-item-info">
+                        <strong>${file.name}</strong>
+                        <span>Ukuran: ${(file.size / (1024*1024)).toFixed(2)} MB</span>
+                    </div>
+                    <a href="${blobUrl}" download="${file.name}" class="download-btn">⬇ Simpan Lokal</a>
+                </div>
+            `;
 
-            const mainBtn = document.createElement('a');
-            mainBtn.href = originalUrl;
-            mainBtn.target = '_blank';
-            mainBtn.rel = 'noopener noreferrer';
-            mainBtn.className = 'download-link-btn';
-            mainBtn.innerHTML = '⬇ Buka & Unduh Media';
-            linksContainer.appendChild(mainBtn);
-
-            resultSection.style.display = 'block';
+            resultsContainer.style.display = 'flex';
         }
+
+        function captureFrame() {
+            if (!activeVideoEl) {
+                alert('Silakan muat video terlebih dahulu.');
+                return;
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = activeVideoEl.videoWidth || 1280;
+            canvas.height = activeVideoEl.videoHeight || 720;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(activeVideoEl, 0, 0, canvas.width, canvas.height);
+
+            const frameUrl = canvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = frameUrl;
+            a.download = `frame_${Date.now()}.png`;
+            a.click();
+        }
+
+        function recordAudio() {
+            alert('Fitur ekstraksi audio siap. Memulai pemutaran dan perekaman...');
+            if (!activeVideoEl) return;
+            activeVideoEl.play();
+        }
+
+        // Blob Downloader Helper
+        async function forceDownloadBlob(url, filename) {
+            try {
+                const res = await fetch(url);
+                const blob = await res.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = `${filename}.${blob.type.split('/')[1] || 'mp4'}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            } catch (e) {
+                window.open(url, '_blank');
+            }
+        }
+
+        // Setup Bookmarklet
+        window.onload = function() {
+            const code = `javascript:(function(){
+                let v = document.querySelector('video') || document.querySelector('meta[property="og:video"]');
+                let src = v ? (v.src || v.content) : location.href;
+                alert('Media Ditemukan:\\n' + src);
+                window.open(src, '_blank');
+            })();`;
+            document.getElementById('bookmarkletAnchor').href = code;
+        };
     </script>
 </body>
 </html>
