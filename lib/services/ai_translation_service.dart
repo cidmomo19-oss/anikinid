@@ -348,14 +348,14 @@ class AiSubtitleTranslationService {
     // Common literal English-Indonesian fixes for natural subtitle flow
     final replacements = <RegExp, String>{
       RegExp(r'\bI see\b', caseSensitive: false): 'Begitu ya',
-      RegExp(r'\bAre you okay\?\b', caseSensitive: false): 'Kamu baik-baik saja?',
-      RegExp(r'\bAre you alright\?\b', caseSensitive: false): 'Kamu baik-baik saja?',
+      RegExp(r'\bAre you okay\??', caseSensitive: false): 'Kamu baik-baik saja?',
+      RegExp(r'\bAre you alright\??', caseSensitive: false): 'Kamu baik-baik saja?',
       RegExp(r'\bIt can’t be helped\b|\bIt cannot be helped\b', caseSensitive: false): 'Mau bagaimana lagi',
-      RegExp(r'\bWhat should I do\?\b', caseSensitive: false): 'Harus bagaimana ini?',
+      RegExp(r'\bWhat should I do\??', caseSensitive: false): 'Harus bagaimana ini?',
       RegExp(r'\bDon’t worry\b|\bDont worry\b', caseSensitive: false): 'Jangan khawatir',
-      RegExp(r'\bNo way!\b', caseSensitive: false): 'Tidak mungkin!',
-      RegExp(r'\bWhat is it\?\b', caseSensitive: false): 'Ada apa?',
-      RegExp(r'\bWhat happened\?\b', caseSensitive: false): 'Apa yang terjadi?',
+      RegExp(r'\bNo way!?', caseSensitive: false): 'Tidak mungkin!',
+      RegExp(r'\bWhat is it\??', caseSensitive: false): 'Ada apa?',
+      RegExp(r'\bWhat happened\??', caseSensitive: false): 'Apa yang terjadi?',
       RegExp(r'\bI’m coming\b|\bIm coming\b', caseSensitive: false): 'Aku datang',
       RegExp(r'\bThank you very much\b', caseSensitive: false): 'Terima kasih banyak',
       RegExp(r'\bThank you\b', caseSensitive: false): 'Terima kasih',
@@ -365,15 +365,15 @@ class AiSubtitleTranslationService {
       RegExp(r'\bI got it\b', caseSensitive: false): 'Aku paham',
       RegExp(r'\bOf course\b', caseSensitive: false): 'Tentu saja',
       RegExp(r'\bWait a minute\b|\bWait a second\b', caseSensitive: false): 'Tunggu sebentar',
-      RegExp(r'\bWait!\b', caseSensitive: false): 'Tunggu!',
-      RegExp(r'\bShut up!\b', caseSensitive: false): 'Diam!',
-      RegExp(r'\bBe careful!\b', caseSensitive: false): 'Hati-hati!',
-      RegExp(r'\bLook out!\b', caseSensitive: false): 'Awas!',
+      RegExp(r'\bWait!?', caseSensitive: false): 'Tunggu!',
+      RegExp(r'\bShut up!?', caseSensitive: false): 'Diam!',
+      RegExp(r'\bBe careful!?', caseSensitive: false): 'Hati-hati!',
+      RegExp(r'\bLook out!?', caseSensitive: false): 'Awas!',
       RegExp(r'\bThat’s right\b|\bThats right\b', caseSensitive: false): 'Itu benar',
-      RegExp(r'\bIs that so\?\b', caseSensitive: false): 'Benarkah?',
+      RegExp(r'\bIs that so\??', caseSensitive: false): 'Benarkah?',
       RegExp(r'\bNever mind\b', caseSensitive: false): 'Lupakan saja',
-      RegExp(r'\bWhat’s wrong\?\b|\bWhats wrong\?\b', caseSensitive: false): 'Ada apa?',
-      RegExp(r'\bLet’s go!\b|\bLets go!\b', caseSensitive: false): 'Ayo pergi!',
+      RegExp(r'\bWhat’s wrong\??|\bWhats wrong\??', caseSensitive: false): 'Ada apa?',
+      RegExp(r'\bLet’s go!?|\bLets go!?', caseSensitive: false): 'Ayo pergi!',
     };
 
     for (final entry in replacements.entries) {
@@ -385,6 +385,8 @@ class AiSubtitleTranslationService {
         .replaceAll(RegExp(r'\bsedang datang\b', caseSensitive: false), 'datang')
         .replaceAll(RegExp(r'\bsaya rasa\b', caseSensitive: false), 'kurasai')
         .replaceAll(RegExp(r'\baku rasa\b', caseSensitive: false), 'kurasa')
+        .replaceAll(RegExp(r'\bsaya mengerti\b', caseSensitive: false), 'Aku mengerti')
+        .replaceAll(RegExp(r'\b(Apakah )?kamu baik\s*-\s*baik saja\??', caseSensitive: false), 'Kamu baik-baik saja?')
         .replaceAll(RegExp(r'\bkamu adalah\b', caseSensitive: false), 'kau')
         .replaceAll(RegExp(r'\bdiriku adalah\b', caseSensitive: false), 'aku')
         .replaceAll(RegExp(r'\btidak bisa\b', caseSensitive: false), 'tak bisa')
