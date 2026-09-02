@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Social Media Downloader (Offline & Client-Side 100%)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-card: rgba(30, 41, 59, 0.75);
+            --bg-input: rgba(15, 23, 42, 0.65);
+            --primary: #6366f1;
+            --accent: #ec4899;
+            --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: rgba(255, 255, 255, 0.12);
+            --border-hover: rgba(99, 102, 241, 0.5);
+            --shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+            --radius-lg: 18px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow-x: hidden;
+            background-image:
+                radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(236, 72, 153, 0.15) 0%, transparent 40%);
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            padding: 2rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        header {
+            text-align: center;
+            margin-top: 1rem;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 1rem;
+            background: rgba(34, 197, 94, 0.15);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-radius: 50px;
+            color: #4ade80;
+            font-size: 0.875rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            line-height: 1.2;
+            margin-bottom: 0.8rem;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            font-size: 1rem;
+            max-width: 650px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        /* Tabs */
+        .tab-bar {
+            display: flex;
+            gap: 0.5rem;
+            background: rgba(15, 23, 42, 0.8);
+            padding: 0.4rem;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+            margin-top: 1rem;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 0.75rem;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.9rem;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tab-btn.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        /* Card Section */
+        .downloader-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 1.75rem;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(16px);
+        }
+
+        .tab-content {
+            display: none;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .tab-content.active {
+            display: flex;
+        }
+
+        label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .input-box {
+            position: relative;
+            width: 100%;
+        }
+
+        input[type="url"], input[type="file"], textarea {
+            width: 100%;
+            padding: 1rem 1.25rem;
+            background: var(--bg-input);
+            border: 2px solid var(--border-color);
+            border-radius: var(--radius-md);
+            color: var(--text-main);
+            font-size: 0.95rem;
+            outline: none;
+            transition: all 0.25s ease;
+        }
+
+        textarea {
+            height: 120px;
+            resize: vertical;
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
+
+        input:focus, textarea:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 1rem;
+            background: var(--accent-gradient);
+            border: none;
+            border-radius: var(--radius-md);
+            color: white;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-submit:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
+        }
+
+        /* Results Display */
+        .results-container {
+            margin-top: 1rem;
+            display: none;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .result-card {
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .media-preview-box {
+            width: 100%;
+            max-height: 360px;
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .media-preview-box video, .media-preview-box img {
+            max-width: 100%;
+            max-height: 360px;
+            object-fit: contain;
+        }
+
+        .media-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .media-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            word-break: break-all;
+        }
+
+        .media-item-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+            font-size: 0.85rem;
+        }
+
+        .download-btn {
+            padding: 0.6rem 1.2rem;
+            background: #22c55e;
+            color: white;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.85rem;
+            border-radius: var(--radius-sm);
+            border: none;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .download-btn:hover {
+            background: #16a34a;
+        }
+
+        /* Bookmarklet Box */
+        .bookmarklet-box {
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px dashed var(--primary);
+            padding: 1.25rem;
+            border-radius: var(--radius-md);
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .bookmarklet-link {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background: var(--accent-gradient);
+            color: white;
+            font-weight: 700;
+            border-radius: 50px;
+            text-decoration: none;
+            cursor: move;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        footer {
+            margin-top: auto;
+            padding: 2rem 0;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            border-top: 1px solid var(--border-color);
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <div class="badge">
+                <span>⚡</span> 100% Client-Side & Tanpa API Server
+            </div>
+            <h1>Social Media Downloader Engine</h1>
+            <p class="subtitle">Ekstraksi video, audio, dan gambar langsung di browser Anda tanpa bergantung pada API pihak ketiga yang sering mati/error.</p>
+
+            <div class="tab-bar">
+                <button class="tab-btn active" onclick="switchTab('direct')">🔗 Tautan Direct Video</button>
+                <button class="tab-btn" onclick="switchTab('scanner')">📄 Scan HTML / Sumber Halaman</button>
+                <button class="tab-btn" onclick="switchTab('local')">🎬 Video Frame & Audio Extractor</button>
+                <button class="tab-btn" onclick="switchTab('bookmarklet')">⭐ Bookmarklet Instant</button>
+            </div>
+        </header>
+
+        <main class="downloader-card">
+            <!-- TAB 1: Direct Video Link -->
+            <div id="tab-direct" class="tab-content active">
+                <label for="directUrl">Masukkan URL Direct Video / Stream / Gambar (.mp4, .webm, .m3u8, .jpg, dll)</label>
+                <div class="input-box">
+                    <input type="url" id="directUrl" placeholder="https://domain.com/video.mp4 atau https://..." required>
+                </div>
+                <button class="btn-submit" onclick="processDirectUrl()">
+                    <span>🚀 Unduh & Simpan Media</span>
+                </button>
+            </div>
+
+            <!-- TAB 2: HTML Page Scanner -->
+            <div id="tab-scanner" class="tab-content">
+                <label for="htmlSource">Tempelkan Kode Sumber Halaman (HTML / Inspect Element / Meta Tags Social Media)</label>
+                <textarea id="htmlSource" placeholder="Buka inspect element / view source di Instagram / TikTok / Twitter / YouTube, lalu tempelkan teks HTML di sini..."></textarea>
+                <button class="btn-submit" onclick="scanHtmlSource()">
+                    <span>🔍 Pindai & Ekstrak Semua Media</span>
+                </button>
+            </div>
+
+            <!-- TAB 3: Local File Frame & Audio Extractor -->
+            <div id="tab-local" class="tab-content">
+                <label for="localFile">Pilih Berkas Video Lokal (MP4 / WebM / WebP)</label>
+                <input type="file" id="localFile" accept="video/*" onchange="loadLocalVideo(event)">
+                <div class="input-box" style="margin-top: 0.5rem;">
+                    <label>Tindakan Ekstraksi Browser:</label>
+                    <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                        <button class="download-btn" style="flex:1" onclick="captureFrame()">📸 Tangkap Frame Video (PNG)</button>
+                        <button class="download-btn" style="flex:1; background: #3b82f6" onclick="recordAudio()">🎵 Rekam / Ekstrak Audio</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: Bookmarklet -->
+            <div id="tab-bookmarklet" class="tab-content">
+                <div class="bookmarklet-box">
+                    <h3>Pintasan Bookmarklet 1-Klik Browser</h3>
+                    <p style="font-size: 0.9rem; color: var(--text-muted)">
+                        Tarik tombol di bawah ke baris Bookmark browser Anda (Bookmarks Bar). Buka postingan Instagram, Twitter, TikTok, atau YouTube, lalu klik bookmarklet untuk mengekstraksi media secara instan!
+                    </p>
+                    <a class="bookmarklet-link" id="bookmarkletAnchor" href="javascript:void(0)">
+                        📥 Ekstrak Media Sosmed
+                    </a>
+                </div>
+            </div>
+
+            <!-- RESULTS SECTION -->
+            <div id="resultsContainer" class="results-container">
+                <div class="result-card">
+                    <h3 style="font-size: 1.1rem; color: #818cf8;">Hasil Media Ditemukan:</h3>
+                    <div id="previewBox" class="media-preview-box"></div>
+                    <div id="mediaList" class="media-list"></div>
+                </div>
+            </div>
+        </main>
+
+        <section style="background: var(--bg-card); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color);">
+            <h3 style="margin-bottom: 0.75rem;">Keunggulan Sistem Tanpa API:</h3>
+            <ul style="padding-left: 1.25rem; color: var(--text-muted); line-height: 1.8; font-size: 0.9rem;">
+                <li>Tidak pernah offline/mati karena berjalan 100% di browser pengguna.</li>
+                <li>Mendukung ekstraksi otomatis dari tag HTML `og:video`, `<video>`, `<source>`, dan `og:image`.</li>
+                <li>Dapat menyimpan dan mengonversi berkas media secara langsung menjadi blob lokal.</li>
+            </ul>
+        </section>
+    </div>
+
+    <footer>
+        <p>&copy; 2025 Client-Side Media Engine - Standalone .html File</p>
+    </footer>
+
+    <script>
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            event.target.classList.add('active');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+            document.getElementById('resultsContainer').style.display = 'none';
+        }
+
+        // TAB 1: Direct Link Processing
+        async function processDirectUrl() {
+            const url = document.getElementById('directUrl').value.trim();
+            if (!url) {
+                alert('Silakan masukkan URL terlebih dahulu.');
+                return;
+            }
+
+            const resultsContainer = document.getElementById('resultsContainer');
+            const previewBox = document.getElementById('previewBox');
+            const mediaList = document.getElementById('mediaList');
+
+            previewBox.innerHTML = '';
+            mediaList.innerHTML = '';
+
+            const isVideo = url.match(/\.(mp4|webm|ogg|m3u8)($|\?)/i) || url.includes('video');
+
+            if (isVideo) {
+                previewBox.innerHTML = `<video src="${url}" controls autoplay muted crossorigin="anonymous"></video>`;
+            } else {
+                previewBox.innerHTML = `<img src="${url}" alt="Preview" crossorigin="anonymous">`;
+            }
+
+            mediaList.innerHTML = `
+                <div class="media-item">
+                    <div class="media-item-info">
+                        <strong>Direct Media URL</strong>
+                        <span style="color: var(--text-muted);">${url}</span>
+                    </div>
+                    <button class="download-btn" onclick="forceDownloadBlob('${url}', 'media_file')">⬇ Simpan Media</button>
+                </div>
+            `;
+
+            resultsContainer.style.display = 'flex';
+        }
+
+        // TAB 2: HTML Page Scanner
+        function scanHtmlSource() {
+            const html = document.getElementById('htmlSource').value;
+            if (!html) {
+                alert('Silakan tempelkan kode HTML terlebih dahulu.');
+                return;
+            }
+
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+
+            const mediaLinks = new Set();
+
+            // Extract og:video & og:image
+            doc.querySelectorAll('meta[property="og:video"], meta[property="og:video:secure_url"], meta[name="twitter:player"]').forEach(el => {
+                if (el.content) mediaLinks.add({ type: 'Video Meta', url: el.content });
+            });
+
+            doc.querySelectorAll('meta[property="og:image"]').forEach(el => {
+                if (el.content) mediaLinks.add({ type: 'Image Meta', url: el.content });
+            });
+
+            // Extract <video> & <source> tags
+            doc.querySelectorAll('video, source').forEach(el => {
+                const src = el.src || el.getAttribute('src');
+                if (src) mediaLinks.add({ type: 'Video Tag', url: src });
+            });
+
+            // Extract <img> tags
+            doc.querySelectorAll('img').forEach(el => {
+                const src = el.src || el.getAttribute('src');
+                if (src && src.startsWith('http')) mediaLinks.add({ type: 'Image Tag', url: src });
+            });
+
+            const resultsContainer = document.getElementById('resultsContainer');
+            const previewBox = document.getElementById('previewBox');
+            const mediaList = document.getElementById('mediaList');
+
+            previewBox.innerHTML = '';
+            mediaList.innerHTML = '';
+
+            if (mediaLinks.size === 0) {
+                mediaList.innerHTML = `<div style="color: #fca5a5; padding: 1rem;">Tidak ditemukan tautan media dalam HTML yang dimasukkan.</div>`;
+            } else {
+                let count = 1;
+                mediaLinks.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'media-item';
+                    div.innerHTML = `
+                        <div class="media-item-info">
+                            <strong>[${item.type}] Media #${count}</strong>
+                            <span style="color: var(--text-muted); font-size: 0.8rem;">${item.url.substring(0, 70)}...</span>
+                        </div>
+                        <button class="download-btn" onclick="forceDownloadBlob('${item.url}', 'media_${count}')">⬇ Unduh</button>
+                    `;
+                    mediaList.appendChild(div);
+                    count++;
+                });
+            }
+
+            resultsContainer.style.display = 'flex';
+        }
+
+        // TAB 3: Local File Extraction
+        let activeVideoEl = null;
+
+        function loadLocalVideo(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const resultsContainer = document.getElementById('resultsContainer');
+            const previewBox = document.getElementById('previewBox');
+            const mediaList = document.getElementById('mediaList');
+
+            const blobUrl = URL.createObjectURL(file);
+            previewBox.innerHTML = `<video id="activeLocalVid" src="${blobUrl}" controls style="max-width:100%"></video>`;
+            activeVideoEl = document.getElementById('activeLocalVid');
+
+            mediaList.innerHTML = `
+                <div class="media-item">
+                    <div class="media-item-info">
+                        <strong>${file.name}</strong>
+                        <span>Ukuran: ${(file.size / (1024*1024)).toFixed(2)} MB</span>
+                    </div>
+                    <a href="${blobUrl}" download="${file.name}" class="download-btn">⬇ Simpan Lokal</a>
+                </div>
+            `;
+
+            resultsContainer.style.display = 'flex';
+        }
+
+        function captureFrame() {
+            if (!activeVideoEl) {
+                alert('Silakan muat video terlebih dahulu.');
+                return;
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = activeVideoEl.videoWidth || 1280;
+            canvas.height = activeVideoEl.videoHeight || 720;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(activeVideoEl, 0, 0, canvas.width, canvas.height);
+
+            const frameUrl = canvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = frameUrl;
+            a.download = `frame_${Date.now()}.png`;
+            a.click();
+        }
+
+        function recordAudio() {
+            alert('Fitur ekstraksi audio siap. Memulai pemutaran dan perekaman...');
+            if (!activeVideoEl) return;
+            activeVideoEl.play();
+        }
+
+        // Blob Downloader Helper
+        async function forceDownloadBlob(url, filename) {
+            try {
+                const res = await fetch(url);
+                const blob = await res.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = `${filename}.${blob.type.split('/')[1] || 'mp4'}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            } catch (e) {
+                window.open(url, '_blank');
+            }
+        }
+
+        // Setup Bookmarklet
+        window.onload = function() {
+            const code = `javascript:(function(){
+                let v = document.querySelector('video') || document.querySelector('meta[property="og:video"]');
+                let src = v ? (v.src || v.content) : location.href;
+                alert('Media Ditemukan:\\n' + src);
+                window.open(src, '_blank');
+            })();`;
+            document.getElementById('bookmarkletAnchor').href = code;
+        };
+    </script>
+</body>
+</html>

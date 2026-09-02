@@ -51,19 +51,23 @@ android {
         }
 
         getByName("debug") {
-            storeFile = File(System.getProperty("user.home"), ".android/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+            val debugKeystore = File(System.getProperty("user.home"), ".android/debug.keystore")
+            if (debugKeystore.exists()) {
+                storeFile = debugKeystore
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = if (keystorePropertiesFile.exists()) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
+            val debugKeystore = File(System.getProperty("user.home"), ".android/debug.keystore")
+            signingConfig = when {
+                keystorePropertiesFile.exists() -> signingConfigs.getByName("release")
+                debugKeystore.exists() -> signingConfigs.getByName("debug")
+                else -> null
             }
             proguardFiles("proguard-rules.pro")
         }
