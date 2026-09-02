@@ -1,0 +1,547 @@
+name: build
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_NAME: Anikin
+  FALLBACK_JURO_API_BASE_URL: https://example.invalid/api
+
+jobs:
+  validate-version:
+    name: Validate version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate pubspec version and release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(awk '$1 == "version:" { print $2; exit }' pubspec.yaml)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?\+[0-9]+$ ]]; then
+            echo "pubspec.yaml version must use release-name+build-number, for example 3.0.9+52." >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            expected_tag="v${version%%+*}"
+            if [[ "$GITHUB_REF_NAME" != "$expected_tag" ]]; then
+              echo "Release tag $GITHUB_REF_NAME does not match pubspec.yaml version $version; expected $expected_tag." >&2
+              exit 1
+            fi
+          fi
+
+  build-android:
+    name: Android
+    needs: validate-version
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      JURO_API_BASE_URL: ${{ secrets.JURO_API_BASE_URL || secrets.API_URL || 'https://example.invalid/api' }}
+      ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 || secrets.KEYSTORE_B64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || secrets.PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'DrMedia' }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || secrets.PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate release secrets
+        if: ${{ github.ref_type == 'tag' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$JURO_API_BASE_URL" || "$JURO_API_BASE_URL" == "$FALLBACK_JURO_API_BASE_URL" ]]; then
+            echo "JURO_API_BASE_URL or API_URL secret is required for tagged releases." >&2
+            exit 1
+          fi
+          if [[ -z "$ANDROID_KEYSTORE_B64" || -z "$ANDROID_KEYSTORE_PASSWORD" || -z "$ANDROID_KEY_PASSWORD" ]]; then
+            echo "Android signing secrets are required for tagged releases." >&2
+            echo "Set ANDROID_KEYSTORE_B64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD." >&2
+            echo "Legacy KEYSTORE_B64 and PASSWORD are also supported." >&2
+            exit 1
+          fi
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          architecture: x64
+          cache: true
+
+      - name: Configure Android signing
+        if: ${{ env.ANDROID_KEYSTORE_B64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_PASSWORD != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "$ANDROID_KEYSTORE_B64" | base64 --decode > android/app/upload-keystore.jks
+          cat > android/key.properties <<EOF
+          storeFile=app/upload-keystore.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+
+      - name: Restore dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build universal APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build apk \
+            --release \
+            --dart-define=JURO_API_BASE_URL="$JURO_API_BASE_URL"
+          mkdir -p artifacts/android
+          cp build/app/outputs/flutter-apk/app-release.apk "artifacts/android/${APP_NAME}-android-universal.apk"
+
+      - name: Verify extension host ABI
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="build/app/outputs/flutter-apk/app-release.apk"
+          analyzer="$(command -v apkanalyzer || true)"
+          if [[ -z "$analyzer" ]]; then
+            sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+            if [[ -n "$sdk_root" && -d "$sdk_root/cmdline-tools" ]]; then
+              analyzer="$(find "$sdk_root/cmdline-tools" -path '*/bin/apkanalyzer' -type f | sort -V | tail -n 1)"
+            fi
+          fi
+          if [[ -z "$analyzer" || ! -x "$analyzer" ]]; then
+            echo "apkanalyzer was not found in the Android SDK." >&2
+            exit 1
+          fi
+
+          verify_open_client() {
+            local class_name="$1"
+            local declaration
+            declaration="$("$analyzer" dex code --class "$class_name" "$apk" \
+              | grep -E '^\.method .* getClient\(\)Lokhttp3/OkHttpClient;' || true)"
+            if [[ -z "$declaration" ]]; then
+              echo "getClient() is missing from $class_name." >&2
+              exit 1
+            fi
+            if [[ "$declaration" == *" final "* ]]; then
+              echo "R8 finalized extension API method: $declaration" >&2
+              exit 1
+            fi
+          }
+
+          verify_open_client "eu.kanade.tachiyomi.animesource.online.AnimeHttpSource"
+          verify_open_client "eu.kanade.tachiyomi.source.online.HttpSource"
+
+          anime_preferences="$("$analyzer" dex code \
+            --class 'eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource$DefaultImpls' \
+            "$apk")"
+          manga_preferences="$("$analyzer" dex code \
+            --class 'eu.kanade.tachiyomi.source.ConfigurableSource$DefaultImpls' \
+            "$apk")"
+          anime_preference_helpers="$("$analyzer" dex code \
+            --class 'eu.kanade.tachiyomi.animesource.ConfigurableAnimeSourceKt' \
+            "$apk")"
+          manga_preference_helpers="$("$analyzer" dex code \
+            --class 'eu.kanade.tachiyomi.source.ConfigurableSourceKt' \
+            "$apk")"
+          grep -q 'getSourcePreferences' <<< "$anime_preferences"
+          grep -q 'getSourcePreferences' <<< "$manga_preferences"
+          grep -q 'preferenceKey' <<< "$anime_preference_helpers"
+          grep -q 'sourcePreferences' <<< "$anime_preference_helpers"
+          grep -q 'preferenceKey' <<< "$manga_preference_helpers"
+          grep -q 'sourcePreferences' <<< "$manga_preference_helpers"
+          "$analyzer" dex code --class 'kotlinx.serialization.protobuf.ProtoBuf' "$apk" >/dev/null
+          "$analyzer" dex code --class 'app.cash.quickjs.QuickJs' "$apk" >/dev/null
+
+      - name: Build split ABI APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build apk \
+            --release \
+            --split-per-abi \
+            --dart-define=JURO_API_BASE_URL="$JURO_API_BASE_URL"
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "artifacts/android/${APP_NAME}-android-armeabi-v7a.apk"
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "artifacts/android/${APP_NAME}-android-arm64-v8a.apk"
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk "artifacts/android/${APP_NAME}-android-x86_64.apk"
+
+      - name: Upload Android universal APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-android-universal
+          path: artifacts/android/${{ env.APP_NAME }}-android-universal.apk
+          if-no-files-found: error
+
+      - name: Upload Android armeabi-v7a APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-android-armeabi-v7a
+          path: artifacts/android/${{ env.APP_NAME }}-android-armeabi-v7a.apk
+          if-no-files-found: error
+
+      - name: Upload Android arm64-v8a APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-android-arm64-v8a
+          path: artifacts/android/${{ env.APP_NAME }}-android-arm64-v8a.apk
+          if-no-files-found: error
+
+      - name: Upload Android x86_64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-android-x86_64
+          path: artifacts/android/${{ env.APP_NAME }}-android-x86_64.apk
+          if-no-files-found: error
+
+  build-windows:
+    name: Windows ${{ matrix.arch }}
+    needs: validate-version
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+            bundle-path: build/windows/x64/runner/Release
+
+    env:
+      JURO_API_BASE_URL: ${{ secrets.JURO_API_BASE_URL || secrets.API_URL || 'https://example.invalid/api' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate release secrets
+        if: ${{ github.ref_type == 'tag' }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:JURO_API_BASE_URL) -or $env:JURO_API_BASE_URL -eq $env:FALLBACK_JURO_API_BASE_URL) {
+            throw "JURO_API_BASE_URL or API_URL secret is required for tagged releases."
+          }
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          architecture: x64
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          architecture: x64
+          cache: true
+
+      - name: Restore dependencies
+        run: flutter pub get
+
+      - name: Build Windows
+        shell: pwsh
+        run: |
+          flutter config --enable-windows-desktop
+          flutter build windows --release --dart-define=JURO_API_BASE_URL="$env:JURO_API_BASE_URL"
+
+      - name: Package Windows
+        shell: pwsh
+        run: |
+          $source = "${{ matrix.bundle-path }}"
+          if (-not (Test-Path $source)) {
+            $source = "build/windows/runner/Release"
+          }
+          if (-not (Test-Path $source)) {
+            throw "Windows bundle directory was not found."
+          }
+          $packageName = "${env:APP_NAME}-windows-${{ matrix.arch }}"
+          $packageDir = "artifacts/windows/$packageName"
+          New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+          Copy-Item -Recurse -Path "$source/*" -Destination $packageDir
+          Compress-Archive -Path "$packageDir/*" -DestinationPath "artifacts/windows/$packageName.zip" -Force
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-windows-${{ matrix.arch }}
+          path: artifacts/windows/*.zip
+          if-no-files-found: error
+
+  build-linux:
+    name: Linux ${{ matrix.arch }}
+    needs: validate-version
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+            flutter-arch: x64
+
+    env:
+      JURO_API_BASE_URL: ${{ secrets.JURO_API_BASE_URL || secrets.API_URL || 'https://example.invalid/api' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate release secrets
+        if: ${{ github.ref_type == 'tag' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$JURO_API_BASE_URL" || "$JURO_API_BASE_URL" == "$FALLBACK_JURO_API_BASE_URL" ]]; then
+            echo "JURO_API_BASE_URL or API_URL secret is required for tagged releases." >&2
+            exit 1
+          fi
+
+      - name: Install Linux build dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libgtk-3-dev \
+            libmpv-dev \
+            libsecret-1-dev \
+            libstdc++-12-dev \
+            zip
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          architecture: x64
+          cache: true
+
+      - name: Restore Linux runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter config --enable-linux-desktop
+          if [[ ! -d linux ]]; then
+            flutter create --platforms=linux --no-pub .
+          fi
+
+      - name: Restore dependencies
+        run: flutter pub get
+
+      - name: Build Linux
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build linux \
+            --release \
+            --dart-define=JURO_API_BASE_URL="$JURO_API_BASE_URL"
+
+      - name: Package Linux
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="build/linux/${{ matrix.flutter-arch }}/release/bundle"
+          if [[ ! -d "$bundle" ]]; then
+            bundle="build/linux/x64/release/bundle"
+          fi
+          if [[ ! -d "$bundle" ]]; then
+            echo "Linux bundle directory was not found." >&2
+            exit 1
+          fi
+          package="${APP_NAME}-linux-${{ matrix.arch }}"
+          mkdir -p artifacts/linux
+          cp -R "$bundle" "$package"
+          zip -r "artifacts/linux/$package.zip" "$package"
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-linux-${{ matrix.arch }}
+          path: artifacts/linux/*.zip
+          if-no-files-found: error
+
+  release:
+    name: GitHub release
+    if: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+    needs:
+      - build-android
+      - build-windows
+      - build-linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine release range
+        id: release-range
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_tag="$(git describe \
+            --tags \
+            --abbrev=0 \
+            --match 'v[0-9]*' \
+            "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+
+          if [[ -n "$previous_tag" ]]; then
+            range="${previous_tag}..${GITHUB_REF_NAME}"
+          else
+            range="${GITHUB_REF_NAME}"
+          fi
+
+          echo "range=$range" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes
+        uses: orhun/git-cliff-action@v4
+        with:
+          version: v2.13.1
+          config: cliff.toml
+          args: --no-exec ${{ steps.release-range.outputs.range }}
+        env:
+          OUTPUT: release-notes.md
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ env.APP_NAME }}-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          prerelease_arg=()
+          if [[ "$tag" == *"-pre"* || "$tag" == *"-beta"* || "$tag" == *"-alpha"* || "$tag" == *"-rc"* ]]; then
+            prerelease_arg=(--prerelease)
+          fi
+
+          if [[ ! -s release-notes.md ]] || ! grep -q '[^[:space:]]' release-notes.md; then
+            printf 'Release %s\n' "$tag" > release-notes.md
+          fi
+
+          gh release create "$tag" release-assets/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "$version" \
+            --notes-file release-notes.md \
+            --verify-tag \
+            "${prerelease_arg[@]}"
+
+  notify:
+    name: Discord notification
+    if: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+    needs:
+      - release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare Discord notification
+        if: ${{ env.DISCORD_WEBHOOK != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes="$(gh release view "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json body \
+            --jq '.body // ""')"
+
+          if [[ -z "$notes" ]]; then
+            notes="Release $GITHUB_REF_NAME"
+          fi
+
+          if (( ${#notes} > 1200 )); then
+            notes="${notes:0:1200}"$'\n\n'"_Release notes truncated; open the GitHub Release to read the rest._"
+          fi
+
+          repository_name="${GITHUB_REPOSITORY#*/}"
+          repository_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+          avatar_url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${DEFAULT_BRANCH}/assets/branding/app_icon.png"
+
+          printf -v content '%s\n' \
+            "**${repository_name}** new version released!" \
+            "Version: \`${GITHUB_REF_NAME}\`" \
+            "" \
+            "$notes" \
+            "" \
+            "**All downloads:** <${repository_url}/releases/tag/${GITHUB_REF_NAME}>" \
+            "" \
+            "**Quick links:**" \
+            "Android (universal): <${repository_url}/releases/download/${GITHUB_REF_NAME}/${APP_NAME}-android-universal.apk>" \
+            "Windows x64: <${repository_url}/releases/download/${GITHUB_REF_NAME}/${APP_NAME}-windows-x64.zip>" \
+            "Linux x64: <${repository_url}/releases/download/${GITHUB_REF_NAME}/${APP_NAME}-linux-x64.zip>"
+
+          payload="$(jq -cn \
+            --arg username "Notifications" \
+            --arg avatar_url "$avatar_url" \
+            --arg content "$content" \
+            '{username: $username, avatar_url: $avatar_url, content: $content}')"
+
+          echo "DISCORD_PAYLOAD=$payload" >> "$GITHUB_ENV"
+
+      - name: Notify Discord
+        if: ${{ env.DISCORD_WEBHOOK != '' }}
+        uses: tyrrrz/action-http-request@v1
+        with:
+          url: ${{ env.DISCORD_WEBHOOK }}
+          method: POST
+          headers: |
+            Content-Type: application/json; charset=UTF-8
+          body: ${{ env.DISCORD_PAYLOAD }}

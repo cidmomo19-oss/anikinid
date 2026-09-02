@@ -1,0 +1,673 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../core/app_theme.dart';
+import 'ai_translation_service.dart';
+
+enum ResizeModeSetting { original, zoom, stretch }
+
+enum EpisodeLayoutMode { semi, full, list }
+
+enum MangaReadingMode { webtoon, leftToRight, rightToLeft }
+
+enum MangaPageFitMode { width, contain }
+
+enum MangaReaderBackground { black, dark, gray, white }
+
+enum AppStartTab { home, search, library }
+
+enum AppMediaType { anime, manga }
+
+enum DownloadQualityPreference { askEveryTime, highest, dataSaver }
+
+enum NotificationPrivacy { full, titleOnly, generic }
+
+enum NovelReaderTheme { system, sepia, dark }
+
+class MangaReadingProgress {
+  const MangaReadingProgress({
+    required this.mediaId,
+    required this.chapterId,
+    required this.chapterNumber,
+    required this.pageIndex,
+    required this.pageCount,
+    required this.completed,
+    required this.updatedAtMs,
+  });
+
+  final int mediaId;
+  final String chapterId;
+  final double chapterNumber;
+  final int pageIndex;
+  final int pageCount;
+  final bool completed;
+  final int updatedAtMs;
+
+  double get pageFraction =>
+      pageCount <= 0 ? 0 : ((pageIndex + 1) / pageCount).clamp(0, 1);
+
+  Map<String, Object?> toJson() => {
+    'mediaId': mediaId,
+    'chapterId': chapterId,
+    'chapterNumber': chapterNumber,
+    'pageIndex': pageIndex,
+    'pageCount': pageCount,
+    'completed': completed,
+    'updatedAtMs': updatedAtMs,
+  };
+
+  factory MangaReadingProgress.fromJson(Map<String, dynamic> json) {
+    return MangaReadingProgress(
+      mediaId: (json['mediaId'] as num?)?.toInt() ?? 0,
+      chapterId: json['chapterId']?.toString() ?? '',
+      chapterNumber: (json['chapterNumber'] as num?)?.toDouble() ?? 0,
+      pageIndex: (json['pageIndex'] as num?)?.toInt() ?? 0,
+      pageCount: (json['pageCount'] as num?)?.toInt() ?? 0,
+      completed: json['completed'] == true,
+      updatedAtMs: (json['updatedAtMs'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+class PreferencesService extends ChangeNotifier {
+  static const _mangaProgressKey = 'reader.mangaProgress';
+
+  SharedPreferences? _prefs;
+  final Map<int, MangaReadingProgress> _mangaProgress = {};
+
+  ThemeMode themeMode = ThemeMode.dark;
+  ThemeColorPalette themeColorPalette = ThemeColorPalette.anikin;
+  AppStartTab appStartTab = AppStartTab.home;
+  AppMediaType appMediaType = AppMediaType.anime;
+  bool incognitoMode = false;
+  bool showNonJapaneseAnime = false;
+  String lastAnimeProviderKey = 'Anime';
+  String? lastAnimeProviderName;
+  String lastMangaProviderKey = 'Manga';
+  String? lastMangaProviderName;
+  bool episodesDescending = true;
+  bool mangaChaptersDescending = true;
+  bool showNonJapaneseManga = true;
+  MangaReadingMode mangaReadingMode = MangaReadingMode.webtoon;
+  MangaPageFitMode mangaPageFitMode = MangaPageFitMode.width;
+  MangaReaderBackground mangaReaderBackground = MangaReaderBackground.black;
+  double mangaPageGap = 4;
+  bool mangaKeepScreenOn = true;
+  bool mangaShowPageNumber = true;
+  int mangaPreloadPages = 4;
+  EpisodeLayoutMode episodeLayoutMode = EpisodeLayoutMode.semi;
+  bool alwaysLandscape = true;
+  bool selectServerBeforePlaying = false;
+  bool cursedSpeeds = false;
+  int defaultSpeedIndex = 5;
+  int seekTimeSeconds = 10;
+  ResizeModeSetting resizeMode = ResizeModeSetting.original;
+  bool subtitlesEnabled = true;
+  int subtitleFontSize = 20;
+  bool aiAutoTranslateIndonesian = false;
+  AiTranslationEngine aiTranslationEngine = AiTranslationEngine.builtIn;
+  String aiApiKey = '';
+  String aiApiEndpoint = '';
+  bool autoPlayNext = true;
+  bool doubleTapSeek = true;
+  bool showRemainingDuration = true;
+  bool resumePlayback = true;
+  int playerControlsTimeoutSeconds = 4;
+  DownloadQualityPreference downloadQualityPreference =
+      DownloadQualityPreference.askEveryTime;
+  bool timeStampsEnabled = true;
+  bool showTimeStampButton = true;
+  bool developerMode = false;
+  bool automaticUpdateChecks = false;
+  bool notificationsEnabled = false;
+  bool notifyAniListCurrent = true;
+  bool notifyAniListPlanning = true;
+  bool notifyAniListFavorites = true;
+  NotificationPrivacy notificationPrivacy = NotificationPrivacy.full;
+  int notificationRefreshHours = 6;
+  double novelFontSize = 18;
+  double novelLineHeight = 1.6;
+  NovelReaderTheme novelReaderTheme = NovelReaderTheme.system;
+  bool novelKeepScreenOn = true;
+
+  List<double> get playbackSpeeds => cursedSpeeds
+      ? const [1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5, 10, 25, 50]
+      : const [0.25, 0.33, 0.5, 0.66, 0.75, 1, 1.25, 1.33, 1.5, 1.66, 1.75, 2];
+
+  double get defaultPlaybackSpeed {
+    final speeds = playbackSpeeds;
+    return speeds[defaultSpeedIndex.clamp(0, speeds.length - 1).toInt()];
+  }
+
+  Future<void> load() async {
+    _prefs = await SharedPreferences.getInstance();
+    final prefs = _prefs!;
+
+    themeMode =
+        ThemeMode.values[(prefs.getInt('themeMode') ?? ThemeMode.dark.index)
+            .clamp(0, ThemeMode.values.length - 1)
+            .toInt()];
+    themeColorPalette =
+        ThemeColorPalette.values[(prefs.getInt('themeColorPalette') ??
+                ThemeColorPalette.anikin.index)
+            .clamp(0, ThemeColorPalette.values.length - 1)
+            .toInt()];
+    appStartTab =
+        AppStartTab.values[(prefs.getInt('appStartTab') ??
+                AppStartTab.home.index)
+            .clamp(0, AppStartTab.values.length - 1)
+            .toInt()];
+    appMediaType =
+        AppMediaType.values[(prefs.getInt('appMediaType') ??
+                AppMediaType.anime.index)
+            .clamp(0, AppMediaType.values.length - 1)
+            .toInt()];
+    incognitoMode = prefs.getBool('incognitoMode') ?? false;
+    showNonJapaneseAnime = prefs.getBool('showNonJapaneseAnime') ?? false;
+    lastAnimeProviderKey = prefs.getString('lastAnimeProviderKey') ?? 'Anime';
+    lastAnimeProviderName = prefs.getString('lastAnimeProviderName');
+    lastMangaProviderKey = prefs.getString('lastMangaProviderKey') ?? 'Manga';
+    lastMangaProviderName = prefs.getString('lastMangaProviderName');
+    episodesDescending = prefs.getBool('episodesDescending') ?? true;
+    mangaChaptersDescending = prefs.getBool('mangaChaptersDescending') ?? true;
+    showNonJapaneseManga = prefs.getBool('showNonJapaneseManga') ?? true;
+    mangaReadingMode =
+        MangaReadingMode.values[(prefs.getInt('mangaReadingMode') ??
+                MangaReadingMode.webtoon.index)
+            .clamp(0, MangaReadingMode.values.length - 1)
+            .toInt()];
+    mangaPageFitMode =
+        MangaPageFitMode.values[(prefs.getInt('mangaPageFitMode') ??
+                MangaPageFitMode.width.index)
+            .clamp(0, MangaPageFitMode.values.length - 1)
+            .toInt()];
+    mangaReaderBackground =
+        MangaReaderBackground.values[(prefs.getInt('mangaReaderBackground') ??
+                MangaReaderBackground.black.index)
+            .clamp(0, MangaReaderBackground.values.length - 1)
+            .toInt()];
+    mangaPageGap = prefs.getDouble('mangaPageGap') ?? 4;
+    mangaKeepScreenOn = prefs.getBool('mangaKeepScreenOn') ?? true;
+    mangaShowPageNumber = prefs.getBool('mangaShowPageNumber') ?? true;
+    mangaPreloadPages = (prefs.getInt('mangaPreloadPages') ?? 4)
+        .clamp(0, 12)
+        .toInt();
+    episodeLayoutMode =
+        EpisodeLayoutMode.values[(prefs.getInt('episodeLayoutMode') ??
+                EpisodeLayoutMode.semi.index)
+            .clamp(0, EpisodeLayoutMode.values.length - 1)
+            .toInt()];
+    alwaysLandscape = prefs.getBool('alwaysLandscape') ?? true;
+    selectServerBeforePlaying =
+        prefs.getBool('selectServerBeforePlaying') ?? false;
+    cursedSpeeds = prefs.getBool('cursedSpeeds') ?? false;
+    defaultSpeedIndex = prefs.getInt('defaultSpeedIndex') ?? 5;
+    seekTimeSeconds = prefs.getInt('seekTimeSeconds') ?? 10;
+    resizeMode =
+        ResizeModeSetting.values[(prefs.getInt('resizeMode') ??
+                ResizeModeSetting.original.index)
+            .clamp(0, ResizeModeSetting.values.length - 1)
+            .toInt()];
+    subtitlesEnabled = prefs.getBool('subtitlesEnabled') ?? true;
+    subtitleFontSize = prefs.getInt('subtitleFontSize') ?? 20;
+    aiAutoTranslateIndonesian =
+        prefs.getBool('aiAutoTranslateIndonesian') ?? false;
+    aiTranslationEngine = AiTranslationEngine.values[(prefs.getInt(
+              'aiTranslationEngine',
+            ) ??
+            AiTranslationEngine.builtIn.index)
+        .clamp(0, AiTranslationEngine.values.length - 1)
+        .toInt()];
+    aiApiKey = prefs.getString('aiApiKey') ?? '';
+    aiApiEndpoint = prefs.getString('aiApiEndpoint') ?? '';
+    autoPlayNext = prefs.getBool('autoPlayNext') ?? true;
+    doubleTapSeek = prefs.getBool('doubleTapSeek') ?? true;
+    showRemainingDuration = prefs.getBool('showRemainingDuration') ?? true;
+    resumePlayback = prefs.getBool('resumePlayback') ?? true;
+    playerControlsTimeoutSeconds =
+        (prefs.getInt('playerControlsTimeoutSeconds') ?? 4)
+            .clamp(2, 15)
+            .toInt();
+    downloadQualityPreference =
+        DownloadQualityPreference.values[(prefs.getInt(
+                  'downloadQualityPreference',
+                ) ??
+                DownloadQualityPreference.askEveryTime.index)
+            .clamp(0, DownloadQualityPreference.values.length - 1)
+            .toInt()];
+    timeStampsEnabled = prefs.getBool('timeStampsEnabled') ?? true;
+    showTimeStampButton = prefs.getBool('showTimeStampButton') ?? true;
+    developerMode = prefs.getBool('developerMode') ?? false;
+    automaticUpdateChecks = prefs.getBool('automaticUpdateChecks') ?? false;
+    notificationsEnabled = prefs.getBool('notificationsEnabled') ?? false;
+    notifyAniListCurrent = prefs.getBool('notifyAniListCurrent') ?? true;
+    notifyAniListPlanning = prefs.getBool('notifyAniListPlanning') ?? true;
+    notifyAniListFavorites = prefs.getBool('notifyAniListFavorites') ?? true;
+    notificationPrivacy =
+        NotificationPrivacy.values[(prefs.getInt('notificationPrivacy') ??
+                NotificationPrivacy.full.index)
+            .clamp(0, NotificationPrivacy.values.length - 1)
+            .toInt()];
+    notificationRefreshHours = (prefs.getInt('notificationRefreshHours') ?? 6)
+        .clamp(1, 24)
+        .toInt();
+    novelFontSize = (prefs.getDouble('novelFontSize') ?? 18)
+        .clamp(12, 36)
+        .toDouble();
+    novelLineHeight = (prefs.getDouble('novelLineHeight') ?? 1.6)
+        .clamp(1.1, 2.4)
+        .toDouble();
+    novelReaderTheme =
+        NovelReaderTheme.values[(prefs.getInt('novelReaderTheme') ??
+                NovelReaderTheme.system.index)
+            .clamp(0, NovelReaderTheme.values.length - 1)
+            .toInt()];
+    novelKeepScreenOn = prefs.getBool('novelKeepScreenOn') ?? true;
+    _mangaProgress
+      ..clear()
+      ..addAll(_decodeMangaProgress(prefs.getString(_mangaProgressKey)));
+    notifyListeners();
+  }
+
+  Map<int, MangaReadingProgress> _decodeMangaProgress(String? encoded) {
+    if (encoded == null || encoded.isEmpty) {
+      return {};
+    }
+    try {
+      final decoded = jsonDecode(encoded);
+      if (decoded is! Map) {
+        return {};
+      }
+      final progress = <int, MangaReadingProgress>{};
+      for (final entry in decoded.entries) {
+        final value = entry.value;
+        if (value is! Map) {
+          continue;
+        }
+        final item = MangaReadingProgress.fromJson(
+          Map<String, dynamic>.from(value),
+        );
+        if (item.mediaId > 0 && item.chapterId.isNotEmpty) {
+          progress[item.mediaId] = item;
+        }
+      }
+      return progress;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  MangaReadingProgress? mangaProgressFor(int mediaId) =>
+      _mangaProgress[mediaId];
+
+  Future<void> setMangaReadingProgress(MangaReadingProgress progress) async {
+    final current = _mangaProgress[progress.mediaId];
+    if (current != null &&
+        current.chapterId == progress.chapterId &&
+        current.pageIndex == progress.pageIndex &&
+        current.pageCount == progress.pageCount &&
+        current.completed == progress.completed) {
+      return;
+    }
+    _mangaProgress[progress.mediaId] = progress;
+    final prefs = _prefs;
+    if (prefs == null) {
+      return;
+    }
+    await prefs.setString(
+      _mangaProgressKey,
+      jsonEncode({
+        for (final entry in _mangaProgress.entries)
+          entry.key.toString(): entry.value.toJson(),
+      }),
+    );
+  }
+
+  int detailSectionIndex({required String mediaKind, required int mediaId}) {
+    final defaultIndex = mediaKind == 'anime' ? 1 : 0;
+    return (_prefs?.getInt('detail.$mediaKind.section.$mediaId') ??
+            defaultIndex)
+        .clamp(0, 1)
+        .toInt();
+  }
+
+  Future<void> setDetailSectionIndex({
+    required String mediaKind,
+    required int mediaId,
+    required int index,
+  }) async {
+    await _prefs?.setInt(
+      'detail.$mediaKind.section.$mediaId',
+      index.clamp(0, 1).toInt(),
+    );
+  }
+
+  Future<void> setThemeMode(ThemeMode value) async {
+    themeMode = value;
+    await _prefs!.setInt('themeMode', value.index);
+    notifyListeners();
+  }
+
+  Future<void> setThemeColorPalette(ThemeColorPalette value) async {
+    themeColorPalette = value;
+    await _prefs!.setInt('themeColorPalette', value.index);
+    notifyListeners();
+  }
+
+  Future<void> setAppStartTab(AppStartTab value) async {
+    appStartTab = value;
+    await _prefs!.setInt('appStartTab', value.index);
+    notifyListeners();
+  }
+
+  Future<void> setAppMediaType(AppMediaType value) async {
+    if (appMediaType == value) {
+      return;
+    }
+    appMediaType = value;
+    await _prefs!.setInt('appMediaType', value.index);
+    notifyListeners();
+  }
+
+  Future<void> setIncognitoMode(bool value) async {
+    incognitoMode = value;
+    await _prefs!.setBool('incognitoMode', value);
+    notifyListeners();
+  }
+
+  Future<void> setShowNonJapaneseAnime(bool value) async {
+    showNonJapaneseAnime = value;
+    await _prefs!.setBool('showNonJapaneseAnime', value);
+    notifyListeners();
+  }
+
+  Future<void> setLastAnimeProvider(SourceProviderChoice choice) async {
+    lastAnimeProviderKey = choice.key;
+    lastAnimeProviderName = choice.name;
+    await _prefs!.setString('lastAnimeProviderKey', choice.key);
+    await _prefs!.setString('lastAnimeProviderName', choice.name);
+    notifyListeners();
+  }
+
+  Future<void> setLastMangaProvider(SourceProviderChoice choice) async {
+    lastMangaProviderKey = choice.key;
+    lastMangaProviderName = choice.name;
+    await _prefs!.setString('lastMangaProviderKey', choice.key);
+    await _prefs!.setString('lastMangaProviderName', choice.name);
+    notifyListeners();
+  }
+
+  Future<void> setEpisodesDescending(bool value) async {
+    episodesDescending = value;
+    await _prefs!.setBool('episodesDescending', value);
+    notifyListeners();
+  }
+
+  Future<void> setMangaChaptersDescending(bool value) async {
+    mangaChaptersDescending = value;
+    await _prefs!.setBool('mangaChaptersDescending', value);
+    notifyListeners();
+  }
+
+  Future<void> setShowNonJapaneseManga(bool value) async {
+    showNonJapaneseManga = value;
+    await _prefs!.setBool('showNonJapaneseManga', value);
+    notifyListeners();
+  }
+
+  Future<void> setMangaReadingMode(MangaReadingMode value) async {
+    mangaReadingMode = value;
+    await _prefs!.setInt('mangaReadingMode', value.index);
+    notifyListeners();
+  }
+
+  Future<void> setMangaPageFitMode(MangaPageFitMode value) async {
+    mangaPageFitMode = value;
+    await _prefs!.setInt('mangaPageFitMode', value.index);
+    notifyListeners();
+  }
+
+  Future<void> setMangaReaderBackground(MangaReaderBackground value) async {
+    mangaReaderBackground = value;
+    await _prefs!.setInt('mangaReaderBackground', value.index);
+    notifyListeners();
+  }
+
+  Future<void> setMangaPageGap(double value) async {
+    mangaPageGap = value.clamp(0, 24).toDouble();
+    await _prefs!.setDouble('mangaPageGap', mangaPageGap);
+    notifyListeners();
+  }
+
+  Future<void> setMangaKeepScreenOn(bool value) async {
+    mangaKeepScreenOn = value;
+    await _prefs!.setBool('mangaKeepScreenOn', value);
+    notifyListeners();
+  }
+
+  Future<void> setMangaShowPageNumber(bool value) async {
+    mangaShowPageNumber = value;
+    await _prefs!.setBool('mangaShowPageNumber', value);
+    notifyListeners();
+  }
+
+  Future<void> setMangaPreloadPages(int value) async {
+    mangaPreloadPages = value.clamp(0, 12).toInt();
+    await _prefs!.setInt('mangaPreloadPages', mangaPreloadPages);
+    notifyListeners();
+  }
+
+  Future<void> setEpisodeLayoutMode(EpisodeLayoutMode value) async {
+    episodeLayoutMode = value;
+    await _prefs!.setInt('episodeLayoutMode', value.index);
+    notifyListeners();
+  }
+
+  Future<void> setAlwaysLandscape(bool value) async {
+    alwaysLandscape = value;
+    await _prefs!.setBool('alwaysLandscape', value);
+    notifyListeners();
+  }
+
+  Future<void> setSelectServerBeforePlaying(bool value) async {
+    selectServerBeforePlaying = value;
+    await _prefs!.setBool('selectServerBeforePlaying', value);
+    notifyListeners();
+  }
+
+  Future<void> setCursedSpeeds(bool value) async {
+    cursedSpeeds = value;
+    defaultSpeedIndex = value ? 0 : 5;
+    await _prefs!.setBool('cursedSpeeds', value);
+    await _prefs!.setInt('defaultSpeedIndex', defaultSpeedIndex);
+    notifyListeners();
+  }
+
+  Future<void> setDefaultSpeedIndex(int value) async {
+    defaultSpeedIndex = value;
+    await _prefs!.setInt('defaultSpeedIndex', value);
+    notifyListeners();
+  }
+
+  Future<void> setSeekTimeSeconds(int value) async {
+    seekTimeSeconds = value.clamp(5, 120).toInt();
+    await _prefs!.setInt('seekTimeSeconds', seekTimeSeconds);
+    notifyListeners();
+  }
+
+  Future<void> setResizeMode(ResizeModeSetting value) async {
+    resizeMode = value;
+    await _prefs!.setInt('resizeMode', value.index);
+    notifyListeners();
+  }
+
+  Future<void> setSubtitlesEnabled(bool value) async {
+    subtitlesEnabled = value;
+    await _prefs!.setBool('subtitlesEnabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setSubtitleFontSize(int value) async {
+    subtitleFontSize = value.clamp(12, 42).toInt();
+    await _prefs!.setInt('subtitleFontSize', subtitleFontSize);
+    notifyListeners();
+  }
+
+  Future<void> setAiAutoTranslateIndonesian(bool value) async {
+    aiAutoTranslateIndonesian = value;
+    await _prefs!.setBool('aiAutoTranslateIndonesian', value);
+    notifyListeners();
+  }
+
+  Future<void> setAiTranslationEngine(AiTranslationEngine value) async {
+    aiTranslationEngine = value;
+    await _prefs!.setInt('aiTranslationEngine', value.index);
+    notifyListeners();
+  }
+
+  Future<void> setAiApiKey(String value) async {
+    aiApiKey = value;
+    await _prefs!.setString('aiApiKey', value);
+    notifyListeners();
+  }
+
+  Future<void> setAiApiEndpoint(String value) async {
+    aiApiEndpoint = value;
+    await _prefs!.setString('aiApiEndpoint', value);
+    notifyListeners();
+  }
+
+  Future<void> setAutoPlayNext(bool value) async {
+    autoPlayNext = value;
+    await _prefs!.setBool('autoPlayNext', value);
+    notifyListeners();
+  }
+
+  Future<void> setDoubleTapSeek(bool value) async {
+    doubleTapSeek = value;
+    await _prefs!.setBool('doubleTapSeek', value);
+    notifyListeners();
+  }
+
+  Future<void> setShowRemainingDuration(bool value) async {
+    showRemainingDuration = value;
+    await _prefs!.setBool('showRemainingDuration', value);
+    notifyListeners();
+  }
+
+  Future<void> setResumePlayback(bool value) async {
+    resumePlayback = value;
+    await _prefs!.setBool('resumePlayback', value);
+    notifyListeners();
+  }
+
+  Future<void> setPlayerControlsTimeoutSeconds(int value) async {
+    playerControlsTimeoutSeconds = value.clamp(2, 15).toInt();
+    await _prefs!.setInt(
+      'playerControlsTimeoutSeconds',
+      playerControlsTimeoutSeconds,
+    );
+    notifyListeners();
+  }
+
+  Future<void> setDownloadQualityPreference(
+    DownloadQualityPreference value,
+  ) async {
+    downloadQualityPreference = value;
+    await _prefs!.setInt('downloadQualityPreference', value.index);
+    notifyListeners();
+  }
+
+  Future<void> setTimeStampsEnabled(bool value) async {
+    timeStampsEnabled = value;
+    await _prefs!.setBool('timeStampsEnabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setShowTimeStampButton(bool value) async {
+    showTimeStampButton = value;
+    await _prefs!.setBool('showTimeStampButton', value);
+    notifyListeners();
+  }
+
+  Future<void> setDeveloperMode(bool value) async {
+    developerMode = value;
+    await _prefs!.setBool('developerMode', value);
+    notifyListeners();
+  }
+
+  Future<void> setAutomaticUpdateChecks(bool value) async {
+    automaticUpdateChecks = value;
+    await _prefs!.setBool('automaticUpdateChecks', value);
+    notifyListeners();
+  }
+
+  Future<void> setNotificationsEnabled(bool value) async {
+    notificationsEnabled = value;
+    await _prefs!.setBool('notificationsEnabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setNotifyAniListCurrent(bool value) async {
+    notifyAniListCurrent = value;
+    await _prefs!.setBool('notifyAniListCurrent', value);
+    notifyListeners();
+  }
+
+  Future<void> setNotifyAniListPlanning(bool value) async {
+    notifyAniListPlanning = value;
+    await _prefs!.setBool('notifyAniListPlanning', value);
+    notifyListeners();
+  }
+
+  Future<void> setNotifyAniListFavorites(bool value) async {
+    notifyAniListFavorites = value;
+    await _prefs!.setBool('notifyAniListFavorites', value);
+    notifyListeners();
+  }
+
+  Future<void> setNotificationPrivacy(NotificationPrivacy value) async {
+    notificationPrivacy = value;
+    await _prefs!.setInt('notificationPrivacy', value.index);
+    notifyListeners();
+  }
+
+  Future<void> setNotificationRefreshHours(int value) async {
+    notificationRefreshHours = value.clamp(1, 24).toInt();
+    await _prefs!.setInt('notificationRefreshHours', notificationRefreshHours);
+    notifyListeners();
+  }
+
+  Future<void> setNovelFontSize(double value) async {
+    novelFontSize = value.clamp(12, 36).toDouble();
+    await _prefs!.setDouble('novelFontSize', novelFontSize);
+    notifyListeners();
+  }
+
+  Future<void> setNovelLineHeight(double value) async {
+    novelLineHeight = value.clamp(1.1, 2.4).toDouble();
+    await _prefs!.setDouble('novelLineHeight', novelLineHeight);
+    notifyListeners();
+  }
+
+  Future<void> setNovelReaderTheme(NovelReaderTheme value) async {
+    novelReaderTheme = value;
+    await _prefs!.setInt('novelReaderTheme', value.index);
+    notifyListeners();
+  }
+
+  Future<void> setNovelKeepScreenOn(bool value) async {
+    novelKeepScreenOn = value;
+    await _prefs!.setBool('novelKeepScreenOn', value);
+    notifyListeners();
+  }
+}
+
+class SourceProviderChoice {
+  const SourceProviderChoice({required this.key, required this.name});
+
+  final String key;
+  final String name;
+}

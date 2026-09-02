@@ -1,0 +1,1611 @@
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart';
+import 'package:flutter/material.dart';
+
+import '../app/app_services.dart';
+import '../data/app_database.dart';
+import '../models/downloaded_episode.dart';
+import '../models/downloaded_manga.dart';
+import '../models/juro_models.dart';
+import '../models/tracking.dart';
+import '../models/anilist_media.dart';
+import '../models/watch_history.dart';
+import '../services/download_service.dart';
+import '../services/juro_service.dart';
+import '../services/manga_download_service.dart';
+import '../services/feature_gate_service.dart';
+import '../services/novel_library_service.dart';
+import '../services/preferences_service.dart';
+import '../services/tracking_service.dart';
+import '../services/watch_history_service.dart';
+import '../widgets/app_dialogs.dart';
+import '../widgets/app_content_constraint.dart';
+import '../widgets/app_error_view.dart';
+import 'detail_screen.dart';
+import 'manga_detail_screen.dart';
+import 'manga_reader_screen.dart';
+import 'novel_reader_screen.dart';
+import 'player_screen.dart';
+
+class DownloadsScreen extends LibraryScreen {
+  const DownloadsScreen({
+    required super.downloadService,
+    required super.mangaDownloadService,
+    required super.preferences,
+    required super.juroService,
+    required super.watchHistoryService,
+    required super.trackingService,
+    super.key,
+  });
+}
+
+class LibraryScreen extends StatefulWidget {
+  const LibraryScreen({
+    required this.downloadService,
+    required this.mangaDownloadService,
+    required this.preferences,
+    required this.juroService,
+    required this.watchHistoryService,
+    required this.trackingService,
+    super.key,
+  });
+
+  final DownloadService downloadService;
+  final MangaDownloadService mangaDownloadService;
+  final PreferencesService preferences;
+  final JuroService juroService;
+  final WatchHistoryService watchHistoryService;
+  final TrackingService trackingService;
+
+  @override
+  State<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class _LibraryScreenState extends State<LibraryScreen> {
+  late final Future<void> _loadFuture;
+  late Future<Map<String, WatchedEpisode>> _historyFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFuture = _loadDownloads();
+    _historyFuture = widget.watchHistoryService.getAll();
+    widget.watchHistoryService.addListener(_handleHistoryChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.watchHistoryService.removeListener(_handleHistoryChanged);
+    super.dispose();
+  }
+
+  void _handleHistoryChanged() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _historyFuture = widget.watchHistoryService.getAll();
+    });
+  }
+
+  Future<void> _loadDownloads() async {
+    await Future.wait([
+      widget.downloadService.load(),
+      widget.mangaDownloadService.load(),
+    ]);
+  }
+
+  Future<void> _openDownload(DownloadedEpisode download) async {
+    if (!await File(download.localPath).exists()) {
+      if (mounted) {
+        await showErrorDialog(
+          context,
+          'Offline file is missing',
+          title: 'Unable to open download',
+        );
+      }
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PlayerScreen(
+          media: download.media,
+          providerAnime: download.providerAnime,
+          episode: download.episode,
+          episodes: [download.episode],
+          initialSource: VideoSource(
+            title: download.sourceTitle,
+            videoUrl: download.localPath,
+            fileType: 'Offline',
+            videoServer: VideoServer(
+              name: download.serverName,
+              embed: const FileUrl(url: ''),
+            ),
+          ),
+          preferences: widget.preferences,
+          juroService: widget.juroService,
+          watchHistoryService: widget.watchHistoryService,
+          trackingService: widget.trackingService,
+          offlineFilePath: download.localPath,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openHistory(WatchedEpisode history) async {
+    if (!history.canResumeAnime) {
+      await showErrorDialog(
+        context,
+        'This continue item was saved before direct resume was available. '
+        'Open the show once to refresh its resume data.',
+        title: 'Unable to resume',
+      );
+      return;
+    }
+
+    final download = await offlineResumeDownloadFor(
+      widget.downloadService,
+      history,
+    );
+    if (download != null) {
+      await _openDownload(download);
+      return;
+    }
+
+    try {
+      final providerKey = history.providerKey!;
+      final providerAnime = history.resumeProviderAnime;
+      final media = history.resumeMedia;
+      final episodes = List<AnimeEpisode>.of(
+        await widget.juroService.getEpisodes(
+          providerAnime.id,
+          providerKey: providerKey,
+        ),
+      )..sort((a, b) => a.number.compareTo(b.number));
+
+      final preparedEpisodes = episodes
+          .map(
+            (episode) => episode.copyWith(
+              image: episode.image ?? providerAnime.image ?? media.cover.best,
+            ),
+          )
+          .toList();
+      final episode = _matchingEpisode(history, preparedEpisodes);
+      if (episode == null) {
+        throw const ResumeException(
+          'The saved episode could not be found from the current provider.',
+        );
+      }
+
+      if (!mounted) {
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PlayerScreen(
+            media: media,
+            providerAnime: providerAnime,
+            episode: episode,
+            episodes: preparedEpisodes,
+            initialSource: null,
+            preferences: widget.preferences,
+            juroService: widget.juroService,
+            watchHistoryService: widget.watchHistoryService,
+            trackingService: widget.trackingService,
+            providerKey: providerKey,
+            providerName: history.providerName,
+          ),
+        ),
+      );
+      await _refreshHistory();
+    } catch (error) {
+      if (mounted) {
+        await showErrorDialog(context, error, title: 'Unable to resume');
+      }
+    }
+  }
+
+  Future<void> _refreshHistory() async {
+    setState(() {
+      _historyFuture = widget.watchHistoryService.getAll();
+    });
+  }
+
+  Future<void> _openFavorite(AniListMedia media, TrackingMediaKind kind) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => kind == TrackingMediaKind.anime
+            ? DetailScreen(
+                media: media,
+                preferences: widget.preferences,
+                juroService: widget.juroService,
+                watchHistoryService: widget.watchHistoryService,
+                downloadService: widget.downloadService,
+                trackingService: widget.trackingService,
+              )
+            : MangaDetailScreen(
+                media: media,
+                preferences: widget.preferences,
+                juroService: widget.juroService,
+                mangaDownloadService: widget.mangaDownloadService,
+                trackingService: widget.trackingService,
+              ),
+      ),
+    );
+    if (kind == TrackingMediaKind.anime) {
+      await _refreshHistory();
+    }
+  }
+
+  Future<void> _openMangaDownload(DownloadedMangaChapter download) async {
+    final pages = await widget.mangaDownloadService.pagesFor(download.id);
+    if (pages == null || pages.isEmpty) {
+      if (mounted) {
+        await showErrorDialog(
+          context,
+          'Offline manga pages are missing',
+          title: 'Unable to open download',
+        );
+      }
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    final chapters =
+        widget.mangaDownloadService.items
+            .where(
+              (item) =>
+                  item.mediaId == download.mediaId &&
+                  item.mangaId == download.mangaId,
+            )
+            .map((item) => item.chapter)
+            .toList()
+          ..sort((a, b) => a.number.compareTo(b.number));
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MangaReaderScreen(
+          media: download.media,
+          mangaInfo: download.mangaInfo,
+          chapter: download.chapter,
+          chapters: chapters.isEmpty ? [download.chapter] : chapters,
+          preferences: widget.preferences,
+          juroService: widget.juroService,
+          mangaDownloadService: widget.mangaDownloadService,
+          trackingService: widget.trackingService,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final services = AppScope.maybeOf(context);
+    final novelLibrary =
+        services != null &&
+            services.featureGates.isEnabled(AppFeature.novelReader)
+        ? services.novelLibraryService
+        : null;
+    return SafeArea(
+      child: FutureBuilder<void>(
+        future: _loadFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return AppErrorView(message: snapshot.error.toString());
+          }
+
+          return AppContentConstraint(
+            child: DefaultTabController(
+              length: novelLibrary == null ? 4 : 5,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                    child: Text(
+                      'Library',
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      return TabBar(
+                        isScrollable:
+                            constraints.maxWidth <
+                            (novelLibrary == null ? 380 : 520),
+                        tabs: [
+                          const Tab(
+                            text: 'Continue',
+                            icon: Icon(Icons.play_arrow),
+                          ),
+                          const Tab(
+                            text: 'Favorites',
+                            icon: Icon(Icons.favorite_border),
+                          ),
+                          const Tab(
+                            text: 'Downloads',
+                            icon: Icon(Icons.download),
+                          ),
+                          const Tab(
+                            text: 'Lists',
+                            icon: Icon(Icons.format_list_bulleted),
+                          ),
+                          if (novelLibrary != null)
+                            const Tab(
+                              text: 'Novels',
+                              icon: Icon(Icons.auto_stories_outlined),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                  Expanded(
+                    child: TabBarView(
+                      children: [
+                        _ContinueTab(
+                          historyFuture: _historyFuture,
+                          onOpen: _openHistory,
+                        ),
+                        _FavoritesTab(
+                          trackingService: widget.trackingService,
+                          onOpen: _openFavorite,
+                        ),
+                        AnimatedBuilder(
+                          animation: Listenable.merge([
+                            widget.downloadService,
+                            widget.mangaDownloadService,
+                          ]),
+                          builder: (context, _) => _DownloadsBody(
+                            service: widget.downloadService,
+                            mangaService: widget.mangaDownloadService,
+                            onOpen: _openDownload,
+                            onOpenManga: _openMangaDownload,
+                          ),
+                        ),
+                        _ListsTab(
+                          trackingService: widget.trackingService,
+                          onOpen: _openFavorite,
+                        ),
+                        if (novelLibrary != null)
+                          _NovelsTab(
+                            library: novelLibrary,
+                            preferences: widget.preferences,
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _NovelsTab extends StatefulWidget {
+  const _NovelsTab({required this.library, required this.preferences});
+
+  final NovelLibraryService library;
+  final PreferencesService preferences;
+
+  @override
+  State<_NovelsTab> createState() => _NovelsTabState();
+}
+
+class _NovelsTabState extends State<_NovelsTab> {
+  late Future<List<NovelLibraryEntry>> _booksFuture;
+  bool _importing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _booksFuture = widget.library.books();
+    widget.library.addListener(_handleLibraryChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _NovelsTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.library == widget.library) return;
+    oldWidget.library.removeListener(_handleLibraryChanged);
+    widget.library.addListener(_handleLibraryChanged);
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    widget.library.removeListener(_handleLibraryChanged);
+    super.dispose();
+  }
+
+  void _handleLibraryChanged() => _refresh();
+
+  void _refresh() {
+    if (mounted) {
+      setState(() => _booksFuture = widget.library.books());
+    }
+  }
+
+  Future<void> _importBook() async {
+    final file = await openFile(
+      acceptedTypeGroups: const [
+        XTypeGroup(label: 'Books', extensions: ['epub', 'txt']),
+      ],
+    );
+    if (file == null || !mounted) return;
+    setState(() => _importing = true);
+    try {
+      final book = await widget.library.importFile(file);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => NovelReaderScreen(
+            book: book,
+            library: widget.library,
+            preferences: widget.preferences,
+          ),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        await showErrorDialog(
+          context,
+          error.toString(),
+          title: 'Unable to import book',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
+  }
+
+  Future<void> _openBook(NovelLibraryEntry book) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => NovelReaderScreen(
+          book: book,
+          library: widget.library,
+          preferences: widget.preferences,
+        ),
+      ),
+    );
+    _refresh();
+  }
+
+  Future<void> _removeBook(NovelLibraryEntry book) async {
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: 'Remove book?',
+      message:
+          '“${book.title}” and its locally imported chapters will be removed.',
+      confirmLabel: 'Remove',
+      destructive: true,
+      icon: Icons.delete_outline,
+    );
+    if (confirmed) await widget.library.removeBook(book);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<NovelLibraryEntry>>(
+      future: _booksFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return AppErrorView(message: snapshot.error.toString());
+        }
+        final books = snapshot.data ?? const [];
+        return RefreshIndicator(
+          onRefresh: () async {
+            _refresh();
+            await _booksFuture;
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+            children: [
+              FilledButton.icon(
+                onPressed: _importing ? null : _importBook,
+                icon: _importing
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.file_open_outlined),
+                label: Text(_importing ? 'Importing…' : 'Import EPUB or TXT'),
+              ),
+              const SizedBox(height: 12),
+              if (books.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40),
+                  child: EmptyState(
+                    icon: Icons.auto_stories_outlined,
+                    title: 'Your novel shelf is empty',
+                    message:
+                        'Import an EPUB or plain-text book. Files stay in Anikin’s private library.',
+                  ),
+                )
+              else
+                for (final book in books)
+                  Card(
+                    clipBehavior: Clip.antiAlias,
+                    child: ListTile(
+                      leading: const SizedBox.square(
+                        dimension: 48,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Color(0x2235C78A),
+                            borderRadius: BorderRadius.all(Radius.circular(8)),
+                          ),
+                          child: Icon(Icons.menu_book_outlined),
+                        ),
+                      ),
+                      title: Text(book.title),
+                      subtitle: Text(
+                        book.author?.trim().isNotEmpty == true
+                            ? book.author!
+                            : 'Local book',
+                      ),
+                      trailing: PopupMenuButton<String>(
+                        onSelected: (value) {
+                          if (value == 'remove') _removeBook(book);
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(
+                            value: 'remove',
+                            child: ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(Icons.delete_outline),
+                              title: Text('Remove'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      onTap: () => _openBook(book),
+                    ),
+                  ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+Future<DownloadedEpisode?> offlineResumeDownloadFor(
+  DownloadService service,
+  WatchedEpisode history,
+) async {
+  final download = service.getById(history.id);
+  if (download != null && await File(download.localPath).exists()) {
+    return download;
+  }
+  return null;
+}
+
+AnimeEpisode? _matchingEpisode(
+  WatchedEpisode history,
+  List<AnimeEpisode> episodes,
+) {
+  for (final episode in episodes) {
+    if (episode.id == history.episodeId) {
+      return episode;
+    }
+  }
+  for (final episode in episodes) {
+    if (episode.number == history.episodeNumber) {
+      return episode;
+    }
+  }
+  return null;
+}
+
+class _ContinueTab extends StatelessWidget {
+  const _ContinueTab({required this.historyFuture, required this.onOpen});
+
+  final Future<Map<String, WatchedEpisode>> historyFuture;
+  final ValueChanged<WatchedEpisode> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Map<String, WatchedEpisode>>(
+      future: historyFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return AppErrorView(message: snapshot.error.toString());
+        }
+        final items =
+            (snapshot.data ?? const <String, WatchedEpisode>{}).values
+                .where((item) => item.watchedPercentage > 0)
+                .toList()
+              ..sort((a, b) {
+                final updated = (b.updatedAtMs ?? 0).compareTo(
+                  a.updatedAtMs ?? 0,
+                );
+                if (updated != 0) {
+                  return updated;
+                }
+                return b.watchedPercentage.compareTo(a.watchedPercentage);
+              });
+        if (items.isEmpty) {
+          return const EmptyState(
+            icon: Icons.play_circle_outline,
+            title: 'Nothing to continue',
+          );
+        }
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+          children: [
+            for (final item in items)
+              Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  enabled: item.canResumeAnime,
+                  leading: Icon(
+                    item.canResumeAnime
+                        ? Icons.play_circle_outline
+                        : Icons.history_toggle_off,
+                  ),
+                  title: Text(
+                    item.displayAnimeName.isEmpty
+                        ? 'Unknown anime'
+                        : item.displayAnimeName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    [
+                      if (item.canResumeAnime) item.displayEpisodeName,
+                      '${item.watchedPercentage.clamp(0, 100).round()}% watched',
+                      _formatDuration(item.watchedDuration),
+                      if (!item.canResumeAnime) 'Open once to refresh resume',
+                    ].join(' • '),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: item.canResumeAnime ? () => onOpen(item) : null,
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class ResumeException implements Exception {
+  const ResumeException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+class _FavoritesTab extends StatefulWidget {
+  const _FavoritesTab({required this.trackingService, required this.onOpen});
+
+  final TrackingService trackingService;
+  final Future<void> Function(AniListMedia media, TrackingMediaKind kind)
+  onOpen;
+
+  @override
+  State<_FavoritesTab> createState() => _FavoritesTabState();
+}
+
+class _FavoritesTabState extends State<_FavoritesTab> {
+  late Future<_FavoriteBuckets> _favoritesFuture;
+  bool _loadedForLoggedInAccount = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _favoritesFuture = _loadFavorites();
+  }
+
+  Future<_FavoriteBuckets> _loadFavorites() async {
+    if (!widget.trackingService.isLoggedIn(TrackingProvider.anilist)) {
+      return const _FavoriteBuckets();
+    }
+    final results = await Future.wait([
+      widget.trackingService.favoriteMedia(TrackingMediaKind.anime),
+      widget.trackingService.favoriteMedia(TrackingMediaKind.manga),
+    ]);
+    return _FavoriteBuckets(anime: results[0], manga: results[1]);
+  }
+
+  void _refresh() {
+    setState(() {
+      _favoritesFuture = _loadFavorites();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: widget.trackingService,
+      builder: (context, _) {
+        final loggedIn = widget.trackingService.isLoggedIn(
+          TrackingProvider.anilist,
+        );
+        if (!loggedIn) {
+          _loadedForLoggedInAccount = false;
+          return const EmptyState(
+            icon: Icons.favorite_border,
+            title: 'Login to AniList for favorites',
+          );
+        }
+        if (!_loadedForLoggedInAccount) {
+          _loadedForLoggedInAccount = true;
+          _favoritesFuture = _loadFavorites();
+        }
+        return FutureBuilder<_FavoriteBuckets>(
+          future: _favoritesFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return AppErrorView(message: snapshot.error.toString());
+            }
+            final favorites = snapshot.data ?? const _FavoriteBuckets();
+            if (favorites.anime.isEmpty && favorites.manga.isEmpty) {
+              return RefreshIndicator(
+                onRefresh: () async => _refresh(),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+                  children: const [
+                    SizedBox(height: 120),
+                    EmptyState(
+                      icon: Icons.favorite_border,
+                      title: 'No AniList favorites yet',
+                    ),
+                  ],
+                ),
+              );
+            }
+            return RefreshIndicator(
+              onRefresh: () async => _refresh(),
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+                children: [
+                  if (favorites.anime.isNotEmpty) ...[
+                    const _SectionTitle(title: 'Favorite anime'),
+                    for (final media in favorites.anime)
+                      _FavoriteMediaTile(
+                        media: media,
+                        kind: TrackingMediaKind.anime,
+                        onTap: () =>
+                            widget.onOpen(media, TrackingMediaKind.anime),
+                      ),
+                  ],
+                  if (favorites.manga.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    const _SectionTitle(title: 'Favorite manga'),
+                    for (final media in favorites.manga)
+                      _FavoriteMediaTile(
+                        media: media,
+                        kind: TrackingMediaKind.manga,
+                        onTap: () =>
+                            widget.onOpen(media, TrackingMediaKind.manga),
+                      ),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _ListsTab extends StatefulWidget {
+  const _ListsTab({required this.trackingService, required this.onOpen});
+
+  final TrackingService trackingService;
+  final Future<void> Function(AniListMedia media, TrackingMediaKind kind)
+  onOpen;
+
+  @override
+  State<_ListsTab> createState() => _ListsTabState();
+}
+
+class _ListsTabState extends State<_ListsTab> {
+  late Future<AniListMediaListCollection> _listsFuture;
+  bool _loadedForLoggedInAccount = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _listsFuture = _loadLists();
+  }
+
+  Future<AniListMediaListCollection> _loadLists() async {
+    if (!widget.trackingService.isLoggedIn(TrackingProvider.anilist)) {
+      return const AniListMediaListCollection();
+    }
+    return widget.trackingService.aniListMediaListCollection();
+  }
+
+  Future<void> _refresh() async {
+    final next = _loadLists();
+    setState(() {
+      _listsFuture = next;
+    });
+    try {
+      await next;
+    } catch (_) {}
+  }
+
+  Future<void> _openAndRefresh(
+    AniListMedia media,
+    TrackingMediaKind kind,
+  ) async {
+    await widget.onOpen(media, kind);
+    if (mounted) {
+      await _refresh();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: widget.trackingService,
+      builder: (context, _) {
+        final loggedIn = widget.trackingService.isLoggedIn(
+          TrackingProvider.anilist,
+        );
+        if (!loggedIn) {
+          _loadedForLoggedInAccount = false;
+          return const EmptyState(
+            icon: Icons.format_list_bulleted,
+            title: 'Login to AniList for lists',
+          );
+        }
+        if (!_loadedForLoggedInAccount) {
+          _loadedForLoggedInAccount = true;
+          _listsFuture = _loadLists();
+        }
+        return FutureBuilder<AniListMediaListCollection>(
+          future: _listsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return AppErrorView(
+                message: snapshot.error.toString(),
+                onRetry: () {
+                  _refresh();
+                },
+              );
+            }
+            final lists = snapshot.data ?? const AniListMediaListCollection();
+            if (lists.isEmpty) {
+              return RefreshIndicator(
+                onRefresh: _refresh,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+                  children: const [
+                    SizedBox(height: 120),
+                    EmptyState(
+                      icon: Icons.format_list_bulleted,
+                      title: 'No AniList list entries yet',
+                    ),
+                  ],
+                ),
+              );
+            }
+            return RefreshIndicator(
+              onRefresh: _refresh,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'AniList lists',
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Refresh AniList lists',
+                        onPressed: () {
+                          _refresh();
+                        },
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (lists.anime.isNotEmpty) ...[
+                    _ListKindTitle(
+                      icon: Icons.movie_filter_outlined,
+                      title: 'Anime',
+                      count: lists.anime.length,
+                    ),
+                    _MediaListStatusSections(
+                      entries: lists.anime,
+                      onOpen: _openAndRefresh,
+                    ),
+                  ],
+                  if (lists.manga.isNotEmpty) ...[
+                    if (lists.anime.isNotEmpty) const SizedBox(height: 18),
+                    _ListKindTitle(
+                      icon: Icons.menu_book_outlined,
+                      title: 'Manga',
+                      count: lists.manga.length,
+                    ),
+                    _MediaListStatusSections(
+                      entries: lists.manga,
+                      onOpen: _openAndRefresh,
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _ListKindTitle extends StatelessWidget {
+  const _ListKindTitle({
+    required this.icon,
+    required this.title,
+    required this.count,
+  });
+
+  final IconData icon;
+  final String title;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Theme.of(context).colorScheme.secondary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '$title ($count)',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MediaListStatusSections extends StatelessWidget {
+  const _MediaListStatusSections({required this.entries, required this.onOpen});
+
+  final List<AniListMediaListEntry> entries;
+  final Future<void> Function(AniListMedia media, TrackingMediaKind kind)
+  onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final status in AniListMediaListStatus.values)
+          if (entries.any((entry) => entry.status == status)) ...[
+            _SectionTitle(
+              title:
+                  '${status.label} (${entries.where((entry) => entry.status == status).length})',
+            ),
+            for (final entry in entries.where(
+              (entry) => entry.status == status,
+            ))
+              _MediaListEntryTile(
+                entry: entry,
+                onTap: () => onOpen(entry.media, entry.kind),
+              ),
+            const SizedBox(height: 8),
+          ],
+      ],
+    );
+  }
+}
+
+class _MediaListEntryTile extends StatelessWidget {
+  const _MediaListEntryTile({required this.entry, required this.onTap});
+
+  final AniListMediaListEntry entry;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final image = entry.media.cover.best;
+    final details = [
+      entry.media.metadata,
+      entry.progressLabel,
+      entry.scoreLabel,
+      if (entry.startedAt?.label.isNotEmpty == true)
+        'Started ${entry.startedAt!.label}',
+      if (entry.completedAt?.label.isNotEmpty == true)
+        'Finished ${entry.completedAt!.label}',
+    ].where((part) => part.isNotEmpty).join(' • ');
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: image == null
+              ? ColoredBox(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: SizedBox(
+                    width: 44,
+                    height: 56,
+                    child: Icon(
+                      entry.kind == TrackingMediaKind.anime
+                          ? Icons.movie_outlined
+                          : Icons.menu_book_outlined,
+                    ),
+                  ),
+                )
+              : Image.network(
+                  image,
+                  width: 44,
+                  height: 56,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) =>
+                      const Icon(Icons.broken_image_outlined),
+                ),
+        ),
+        title: Text(
+          entry.media.displayTitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: details.isEmpty
+            ? null
+            : Text(details, maxLines: 2, overflow: TextOverflow.ellipsis),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _FavoriteMediaTile extends StatelessWidget {
+  const _FavoriteMediaTile({
+    required this.media,
+    required this.kind,
+    required this.onTap,
+  });
+
+  final AniListMedia media;
+  final TrackingMediaKind kind;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final image = media.cover.best;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: image == null
+              ? ColoredBox(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: const SizedBox(
+                    width: 44,
+                    height: 56,
+                    child: Icon(Icons.movie_outlined),
+                  ),
+                )
+              : Image.network(
+                  image,
+                  width: 44,
+                  height: 56,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) =>
+                      const Icon(Icons.broken_image_outlined),
+                ),
+        ),
+        title: Text(
+          media.displayTitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          [
+            kind == TrackingMediaKind.anime ? 'Anime' : 'Manga',
+            media.metadata,
+          ].where((part) => part.isNotEmpty).join(' • '),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _FavoriteBuckets {
+  const _FavoriteBuckets({
+    this.anime = const <AniListMedia>[],
+    this.manga = const <AniListMedia>[],
+  });
+
+  final List<AniListMedia> anime;
+  final List<AniListMedia> manga;
+}
+
+class _DownloadsBody extends StatelessWidget {
+  const _DownloadsBody({
+    required this.service,
+    required this.mangaService,
+    required this.onOpen,
+    required this.onOpenManga,
+  });
+
+  final DownloadService service;
+  final MangaDownloadService mangaService;
+  final ValueChanged<DownloadedEpisode> onOpen;
+  final ValueChanged<DownloadedMangaChapter> onOpenManga;
+
+  @override
+  Widget build(BuildContext context) {
+    final tasks = service.activeTasks;
+    final downloads = service.items;
+    final mangaTasks = mangaService.activeTasks;
+    final mangaDownloads = mangaService.items;
+    final hasPausableTasks = tasks.any(
+      (task) =>
+          task.status == DownloadTaskStatus.queued ||
+          task.status == DownloadTaskStatus.downloading,
+    );
+    final hasPausedTasks = tasks.any(
+      (task) => task.status == DownloadTaskStatus.paused,
+    );
+
+    if (tasks.isEmpty &&
+        downloads.isEmpty &&
+        mangaTasks.isEmpty &&
+        mangaDownloads.isEmpty) {
+      return const EmptyState(
+        icon: Icons.download_done_outlined,
+        title: 'No downloads yet',
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Downloads',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            if (downloads.isNotEmpty || mangaDownloads.isNotEmpty)
+              Text(
+                _formatBytes(
+                  downloads.fold<int>(0, (sum, item) => sum + item.bytes) +
+                      mangaDownloads.fold<int>(
+                        0,
+                        (sum, item) => sum + item.bytes,
+                      ),
+                ),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            if (tasks.isNotEmpty)
+              IconButton(
+                tooltip: 'Pause all downloads',
+                onPressed: hasPausableTasks ? service.pauseAllDownloads : null,
+                icon: const Icon(Icons.pause_circle_outline),
+              ),
+            if (tasks.isNotEmpty)
+              IconButton(
+                tooltip: 'Resume paused downloads',
+                onPressed: hasPausedTasks ? service.resumeAllDownloads : null,
+                icon: const Icon(Icons.play_circle_outline),
+              ),
+            if (tasks.isNotEmpty || mangaTasks.isNotEmpty)
+              IconButton(
+                tooltip: 'Cancel all downloads',
+                onPressed: () {
+                  service.cancelAllDownloads();
+                  mangaService.cancelAllDownloads();
+                },
+                icon: const Icon(Icons.stop_circle_outlined),
+              ),
+          ],
+        ),
+        if (tasks.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          _SectionTitle(title: 'Anime downloads'),
+          for (final task in tasks)
+            _DownloadTaskTile(service: service, task: task),
+        ],
+        if (mangaTasks.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          _SectionTitle(title: 'Manga downloads'),
+          for (final task in mangaTasks)
+            _MangaDownloadTaskTile(service: mangaService, task: task),
+        ],
+        if (downloads.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          _SectionTitle(title: 'Offline episodes'),
+          for (final download in downloads)
+            _DownloadedEpisodeTile(
+              service: service,
+              download: download,
+              onTap: () => onOpen(download),
+            ),
+        ],
+        if (mangaDownloads.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          _SectionTitle(title: 'Offline manga'),
+          for (final download in mangaDownloads)
+            _DownloadedMangaChapterTile(
+              service: mangaService,
+              download: download,
+              onTap: () => onOpenManga(download),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        title,
+        style: Theme.of(
+          context,
+        ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+class _DownloadTaskTile extends StatelessWidget {
+  const _DownloadTaskTile({required this.service, required this.task});
+
+  final DownloadService service;
+  final EpisodeDownloadProgress task;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = task.progress;
+    final failed = task.status == DownloadTaskStatus.failed;
+    final canceling = task.status == DownloadTaskStatus.canceling;
+    final pausing = task.status == DownloadTaskStatus.pausing;
+    final paused = task.status == DownloadTaskStatus.paused;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Icon(
+          failed
+              ? Icons.error_outline
+              : canceling
+              ? Icons.stop_circle_outlined
+              : paused
+              ? Icons.pause_circle_outline
+              : Icons.downloading,
+        ),
+        title: Text(
+          task.request.displayTitle,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            LinearProgressIndicator(value: progress),
+            const SizedBox(height: 6),
+            Text(failed ? task.error ?? 'Download failed' : _statusText(task)),
+          ],
+        ),
+        trailing: failed
+            ? IconButton(
+                tooltip: 'Dismiss',
+                onPressed: () => service.delete(task.id),
+                icon: const Icon(Icons.close),
+              )
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: paused
+                        ? 'Resume download'
+                        : pausing
+                        ? 'Pausing download'
+                        : 'Pause download',
+                    onPressed: canceling || pausing
+                        ? null
+                        : paused
+                        ? () => service.resumeDownload(task.id)
+                        : () => service.pauseDownload(task.id),
+                    icon: Icon(
+                      paused
+                          ? Icons.play_circle_outline
+                          : Icons.pause_circle_outline,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: canceling
+                        ? 'Stopping download'
+                        : 'Cancel download',
+                    onPressed: canceling
+                        ? null
+                        : () => service.cancelDownload(task.id),
+                    icon: const Icon(Icons.stop_circle_outlined),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  String _statusText(EpisodeDownloadProgress task) {
+    if (task.status == DownloadTaskStatus.pausing) {
+      return 'Pausing...';
+    }
+    if (task.status == DownloadTaskStatus.paused) {
+      final progress = task.progress;
+      final percent = progress == null
+          ? null
+          : '${(progress * 100).clamp(0, 100).round()}%';
+      return [percent, 'Paused'].whereType<String>().join(' • ');
+    }
+    if (task.status == DownloadTaskStatus.canceling) {
+      return 'Stopping...';
+    }
+
+    final progress = task.progress;
+    final percent = progress == null
+        ? null
+        : '${(progress * 100).clamp(0, 100).round()}%';
+    final total = task.bytesTotal;
+    if (total != null && total > 0) {
+      return [
+        percent,
+        '${_formatBytes(task.bytesReceived)} / ${_formatBytes(total)}',
+      ].whereType<String>().join(' • ');
+    }
+    final itemTotal = task.itemsTotal;
+    if (itemTotal != null && itemTotal > 0) {
+      return [
+        percent,
+        '${task.itemsCompleted} / $itemTotal segments',
+      ].whereType<String>().join(' • ');
+    }
+    if (task.bytesReceived > 0) {
+      return _formatBytes(task.bytesReceived);
+    }
+    return 'Queued';
+  }
+}
+
+class _MangaDownloadTaskTile extends StatelessWidget {
+  const _MangaDownloadTaskTile({required this.service, required this.task});
+
+  final MangaDownloadService service;
+  final MangaChapterDownloadProgress task;
+
+  @override
+  Widget build(BuildContext context) {
+    final failed = task.status == MangaDownloadTaskStatus.failed;
+    final canceling = task.status == MangaDownloadTaskStatus.canceling;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Icon(
+          failed
+              ? Icons.error_outline
+              : canceling
+              ? Icons.stop_circle_outlined
+              : Icons.menu_book_outlined,
+        ),
+        title: Text(
+          task.request.displayTitle,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            LinearProgressIndicator(value: task.progress),
+            const SizedBox(height: 6),
+            Text(failed ? task.error ?? 'Download failed' : _statusText(task)),
+          ],
+        ),
+        trailing: failed
+            ? IconButton(
+                tooltip: 'Dismiss',
+                onPressed: () => service.delete(task.id),
+                icon: const Icon(Icons.close),
+              )
+            : IconButton(
+                tooltip: canceling
+                    ? 'Stopping manga download'
+                    : 'Cancel manga download',
+                onPressed: canceling
+                    ? null
+                    : () => service.cancelDownload(task.id),
+                icon: const Icon(Icons.stop_circle_outlined),
+              ),
+      ),
+    );
+  }
+
+  String _statusText(MangaChapterDownloadProgress task) {
+    if (task.status == MangaDownloadTaskStatus.canceling) {
+      return 'Stopping...';
+    }
+    final progress = task.progress;
+    final percent = progress == null
+        ? null
+        : '${(progress * 100).clamp(0, 100).round()}%';
+    final pageTotal = task.pagesTotal;
+    if (pageTotal != null && pageTotal > 0) {
+      return [
+        percent,
+        '${task.pagesCompleted} / $pageTotal pages',
+        if (task.bytesReceived > 0) _formatBytes(task.bytesReceived),
+      ].whereType<String>().join(' • ');
+    }
+    if (task.bytesReceived > 0) {
+      return _formatBytes(task.bytesReceived);
+    }
+    return 'Queued';
+  }
+}
+
+class _DownloadedEpisodeTile extends StatelessWidget {
+  const _DownloadedEpisodeTile({
+    required this.service,
+    required this.download,
+    required this.onTap,
+  });
+
+  final DownloadService service;
+  final DownloadedEpisode download;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: const Icon(Icons.play_circle_outline),
+        title: Text(
+          download.episode.displayName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          '${download.mediaTitle} • ${download.sourceTitle} • ${_formatBytes(download.bytes)}',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: IconButton(
+          tooltip: 'Delete download',
+          onPressed: () => service.delete(download.id),
+          icon: const Icon(Icons.delete_outline),
+        ),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _DownloadedMangaChapterTile extends StatelessWidget {
+  const _DownloadedMangaChapterTile({
+    required this.service,
+    required this.download,
+    required this.onTap,
+  });
+
+  final MangaDownloadService service;
+  final DownloadedMangaChapter download;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: const Icon(Icons.menu_book_outlined),
+        title: Text(
+          download.chapter.displayTitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          '${download.mediaTitle} • ${download.pages.length} pages • ${_formatBytes(download.bytes)}',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: IconButton(
+          tooltip: 'Delete manga download',
+          onPressed: () => service.delete(download.id),
+          icon: const Icon(Icons.delete_outline),
+        ),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+String _formatBytes(int bytes) {
+  if (bytes < 1024) {
+    return '$bytes B';
+  }
+  final kb = bytes / 1024;
+  if (kb < 1024) {
+    return '${kb.toStringAsFixed(1)} KB';
+  }
+  final mb = kb / 1024;
+  if (mb < 1024) {
+    return '${mb.toStringAsFixed(1)} MB';
+  }
+  final gb = mb / 1024;
+  return '${gb.toStringAsFixed(1)} GB';
+}
+
+String _formatDuration(Duration duration) {
+  final hours = duration.inHours;
+  final minutes = duration.inMinutes.remainder(60);
+  final seconds = duration.inSeconds.remainder(60);
+  if (hours > 0) {
+    return '${hours}h ${minutes}m';
+  }
+  if (minutes > 0) {
+    return '${minutes}m ${seconds}s';
+  }
+  return '${seconds}s';
+}
